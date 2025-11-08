@@ -53,7 +53,7 @@ export default function NovaVendaPage() {
 
     try {
       // Buscar unidades das equipes do usuário
-      const unidadeIds = [...new Set(equipes.map((e) => e.unidade_id))]
+      const unidadeIds = Array.from(new Set(equipes.map((e) => e.unidade_id)))
       
       const { data, error } = await supabase
         .from('unidades')
