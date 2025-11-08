@@ -1,137 +1,145 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useUserStore } from '@/lib/store'
 import { supabase } from '@/lib/supabase'
-import { Mail, Lock, AlertCircle } from 'lucide-react'
+import { TrendingUp, DollarSign, ShoppingBag, Calendar } from 'lucide-react'
+import { format, startOfMonth, endOfMonth } from 'date-fns'
 
-export default function LoginPage() {
-  const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [senha, setSenha] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [erro, setErro] = useState('')
+interface DashboardStats {
+  vendasHoje: number
+  vendasMes: number
+  valorHoje: number
+  valorMes: number
+}
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setErro('')
-    setLoading(true)
+export default function DashboardPage() {
+  const { user } = useUserStore()
+  const [stats, setStats] = useState<DashboardStats>({
+    vendasHoje: 0,
+    vendasMes: 0,
+    valorHoje: 0,
+    valorMes: 0,
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadStats()
+  }, [user])
+
+  const loadStats = async () => {
+    if (!user) return
 
     try {
-      // Fazer login com Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password: senha,
-      })
+      const hoje = format(new Date(), 'yyyy-MM-dd')
+      const inicioMes = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+      const fimMes = format(endOfMonth(new Date()), 'yyyy-MM-dd')
 
-      if (authError) throw authError
+      const { data: vendasHoje } = await supabase
+        .from('vendas')
+        .select('valor_total')
+        .eq('data_venda', hoje)
 
-      if (authData.user) {
-        // Buscar dados do usuário na tabela usuarios
-        const { data: userData, error: userError } = await supabase
-          .from('usuarios')
-          .select(`
-            *,
-            niveis_hierarquicos (*)
-          `)
-          .eq('id', authData.user.id)
-          .single()
+      const { data: vendasMes } = await supabase
+        .from('vendas')
+        .select('valor_total')
+        .gte('data_venda', inicioMes)
+        .lte('data_venda', fimMes)
 
-        if (userError) throw userError
-
-        if (!userData || !userData.ativo) {
-          throw new Error('Usuário inativo ou não encontrado')
-        }
-
-        // Redirecionar para dashboard
-        router.push('/dashboard')
+      if (vendasHoje) {
+        setStats((prev) => ({
+          ...prev,
+          vendasHoje: vendasHoje.length,
+          valorHoje: vendasHoje.reduce((sum, v) => sum + Number(v.valor_total), 0),
+        }))
       }
-    } catch (error: any) {
-      console.error('Erro no login:', error)
-      setErro(error.message || 'Erro ao fazer login. Verifique suas credenciais.')
+
+      if (vendasMes) {
+        setStats((prev) => ({
+          ...prev,
+          vendasMes: vendasMes.length,
+          valorMes: vendasMes.reduce((sum, v) => sum + Number(v.valor_total), 0),
+        }))
+      }
+    } catch (error) {
+      console.error('Erro ao carregar estatísticas:', error)
     } finally {
       setLoading(false)
     }
   }
 
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value)
+  }
+
+  const cards = [
+    {
+      title: 'Vendas Hoje',
+      value: stats.vendasHoje,
+      icon: ShoppingBag,
+      color: 'bg-blue-500',
+    },
+    {
+      title: 'Valor Hoje',
+      value: formatCurrency(stats.valorHoje),
+      icon: DollarSign,
+      color: 'bg-green-500',
+    },
+    {
+      title: 'Vendas do Mês',
+      value: stats.vendasMes,
+      icon: TrendingUp,
+      color: 'bg-purple-500',
+    },
+    {
+      title: 'Valor do Mês',
+      value: formatCurrency(stats.valorMes),
+      icon: Calendar,
+      color: 'bg-orange-500',
+    },
+  ]
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-500 to-primary-700 px-4">
-      <div className="max-w-md w-full">
-        <div className="card">
-          {/* Logo/Título */}
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">TUNAP Vendas</h1>
-            <p className="text-gray-600">Sistema de Controle de Vendas</p>
-          </div>
-
-          {/* Formulário */}
-          <form onSubmit={handleLogin} className="space-y-6">
-            {/* Campo Email */}
-            <div>
-              <label htmlFor="email" className="label">
-                Email
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="input-field pl-10"
-                  placeholder="seu@email.com"
-                  required
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            {/* Campo Senha */}
-            <div>
-              <label htmlFor="senha" className="label">
-                Senha
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  id="senha"
-                  type="password"
-                  value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
-                  className="input-field pl-10"
-                  placeholder="••••••••"
-                  required
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            {/* Mensagem de Erro */}
-            {erro && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{erro}</span>
-              </div>
-            )}
-
-            {/* Botão Login */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full btn-primary"
-            >
-              {loading ? 'Entrando...' : 'Entrar'}
-            </button>
-          </form>
-
-          {/* Link recuperar senha */}
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
-              Esqueceu a senha? Entre em contato com o administrador
-            </p>
-          </div>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">
+          Olá, {user?.nome_completo?.split(' ')[0]}! 👋
+        </h1>
+        <p className="text-gray-600 mt-1">
+          Bem-vindo ao sistema de vendas TUNAP
+        </p>
       </div>
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="card animate-pulse">
+              <div className="h-20 bg-gray-200 rounded" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {cards.map((card, index) => (
+            <div key={index} className="card">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 font-medium">{card.title}</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-2">
+                    {card.value}
+                  </p>
+                </div>
+                <div className={`${card.color} p-3 rounded-lg`}>
+                  <card.icon className="w-6 h-6 text-white" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
