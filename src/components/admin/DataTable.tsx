@@ -1,4 +1,5 @@
 import { Plus, Edit, Trash2, Search } from 'lucide-react'
+import React from 'react'
 
 interface Column {
   key: string
@@ -13,6 +14,7 @@ interface DataTableProps {
   onAdd?: () => void
   onEdit?: (row: any) => void
   onDelete?: (row: any) => void
+  customActions?: (row: any) => React.ReactNode
   searchPlaceholder?: string
   loading?: boolean
 }
@@ -24,6 +26,7 @@ export function DataTable({
   onAdd,
   onEdit,
   onDelete,
+  customActions,
   searchPlaceholder = 'Buscar...',
   loading = false,
 }: DataTableProps) {
@@ -83,7 +86,7 @@ export function DataTable({
                     {column.label}
                   </th>
                 ))}
-                {(onEdit || onDelete) && (
+                {(onEdit || onDelete || customActions) && (
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase">
                     Ações
                   </th>
@@ -100,9 +103,10 @@ export function DataTable({
                         : row[column.key]}
                     </td>
                   ))}
-                  {(onEdit || onDelete) && (
+                  {(onEdit || onDelete || customActions) && (
                     <td className="px-4 py-3 text-sm text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {customActions && customActions(row)}
                         {onEdit && (
                           <button
                             onClick={() => onEdit(row)}
@@ -140,6 +144,3 @@ export function DataTable({
     </div>
   )
 }
-
-// Adicionar import do React
-import React from 'react'
