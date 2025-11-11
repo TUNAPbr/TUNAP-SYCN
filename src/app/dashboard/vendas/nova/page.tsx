@@ -7,21 +7,26 @@ import { supabase } from '@/lib/supabase'
 import { Plus, Trash2, Save, ArrowLeft, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
 
-interface ProdutoDisponivel {
+interface UnidadeFormatada {
   id: string
-  referencia: string
   nome: string
+  cnpj: string
+  grupo_nome: string
+  marca_nome: string
+  label: string // "Grupo Marca Unidade - CNPJ"
+}
+
+interface ProdutoFormatado {
+  id: string
+  referencia_local: string
   nome_sintetico: string
-  numero: string
-  referencia_local: string | null
+  label: string // "referencia_local - nome_sintetico"
 }
 
 interface ItemVenda {
   produto_id: string
   produto_nome: string
   quantidade: number
-  preco_unitario: number
-  subtotal: number
 }
 
 export default function NovaVendaPage() {
@@ -36,18 +41,20 @@ export default function NovaVendaPage() {
   const [itens, setItens] = useState<ItemVenda[]>([])
 
   // Estados auxiliares
-  const [unidades, setUnidades] = useState<any[]>([])
-  const [produtos, setProdutos] = useState<ProdutoDisponivel[]>([])
+  const [unidades, setUnidades] = useState<UnidadeFormatada[]>([])
+  const [produtos, setProdutos] = useState<ProdutoFormatado[]>([])
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState(false)
 
-  // Carregar unidades do usuário
+  // Estados de busca
+  const [buscaUnidade, setBuscaUnidade] = useState('')
+  const [buscaProduto, setBuscaProduto] = useState<string[]>([])
+
   useEffect(() => {
     loadUnidades()
   }, [user])
 
-  // Carregar produtos quando unidade mudar
   useEffect(() => {
     if (unidadeSelecionada) {
       loadProdutos()
@@ -60,7 +67,6 @@ export default function NovaVendaPage() {
     if (!user) return
 
     try {
-      // Buscar equipes do usuário
       const { data: equipesData, error: equipesError } = await supabase
         .from('usuario_equipes')
         .select('equipe_id')
@@ -74,7 +80,6 @@ export default function NovaVendaPage() {
 
       const equipeIds = equipesData.map((e) => e.equipe_id)
 
-      // Buscar unidades dessas equipes
       const { data: equipesCompletas, error: equipesCompletasError } = await supabase
         .from('equipes')
         .select('unidade_id')
@@ -84,10 +89,16 @@ export default function NovaVendaPage() {
 
       const unidadeIds = Array.from(new Set(equipesCompletas?.map((e) => e.unidade_id) || []))
 
-      // Buscar dados das unidades
+      // Buscar unidades com grupo e marca
       const { data: unidadesData, error: unidadesError } = await supabase
         .from('unidades')
-        .select('*')
+        .select(`
+          id,
+          nome,
+          cnpj,
+          grupos (nome),
+          marcas (nome)
+        `)
         .in('id', unidadeIds)
         .eq('ativo', true)
         .order('nome')
@@ -95,11 +106,23 @@ export default function NovaVendaPage() {
       if (unidadesError) throw unidadesError
 
       if (unidadesData) {
-        setUnidades(unidadesData)
-        
-        // Se tiver apenas 1 unidade, seleciona automaticamente
-        if (unidadesData.length === 1) {
-          setUnidadeSelecionada(unidadesData[0].id)
+        const unidadesFormatadas: UnidadeFormatada[] = unidadesData.map((u: any) => {
+          const grupoNome = u.grupos?.nome || 'Sem Grupo'
+          const marcaNome = u.marcas?.nome || 'Sem Marca'
+          return {
+            id: u.id,
+            nome: u.nome,
+            cnpj: u.cnpj,
+            grupo_nome: grupoNome,
+            marca_nome: marcaNome,
+            label: `${grupoNome} ${marcaNome} ${u.nome} - ${u.cnpj}`,
+          }
+        })
+
+        setUnidades(unidadesFormatadas)
+
+        if (unidadesFormatadas.length === 1) {
+          setUnidadeSelecionada(unidadesFormatadas[0].id)
         }
       }
     } catch (error: any) {
@@ -112,7 +135,6 @@ export default function NovaVendaPage() {
     if (!unidadeSelecionada) return
 
     try {
-      // Buscar produtos da unidade via produtos_unidades
       const { data, error } = await supabase
         .from('produtos_unidades')
         .select(`
@@ -120,10 +142,7 @@ export default function NovaVendaPage() {
           referencia_local,
           produtos (
             id,
-            referencia,
-            nome,
-            nome_sintetico,
-            numero
+            nome_sintetico
           )
         `)
         .eq('unidade_id', unidadeSelecionada)
@@ -131,18 +150,17 @@ export default function NovaVendaPage() {
       if (error) throw error
 
       if (data) {
-        const produtosFormatados = data
+        const produtosFormatados: ProdutoFormatado[] = data
           .filter((item: any) => item.produtos)
           .map((item: any) => ({
             id: item.produtos.id,
-            referencia: item.produtos.referencia,
-            nome: item.produtos.nome,
+            referencia_local: item.referencia_local || 'S/REF',
             nome_sintetico: item.produtos.nome_sintetico,
-            numero: item.produtos.numero,
-            referencia_local: item.referencia_local,
+            label: `${item.referencia_local || 'S/REF'} - ${item.produtos.nome_sintetico}`,
           }))
 
         setProdutos(produtosFormatados)
+        setBuscaProduto(new Array(itens.length).fill(''))
       }
     } catch (error: any) {
       console.error('Erro ao carregar produtos:', error)
@@ -157,14 +175,14 @@ export default function NovaVendaPage() {
         produto_id: '',
         produto_nome: '',
         quantidade: 1,
-        preco_unitario: 0,
-        subtotal: 0,
       },
     ])
+    setBuscaProduto([...buscaProduto, ''])
   }
 
   const removerItem = (index: number) => {
     setItens(itens.filter((_, i) => i !== index))
+    setBuscaProduto(buscaProduto.filter((_, i) => i !== index))
   }
 
   const atualizarItem = (index: number, campo: keyof ItemVenda, valor: any) => {
@@ -174,21 +192,13 @@ export default function NovaVendaPage() {
       const produto = produtos.find((p) => p.id === valor)
       if (produto) {
         novosItens[index].produto_id = valor
-        novosItens[index].produto_nome = produto.nome
+        novosItens[index].produto_nome = produto.nome_sintetico
       }
     } else {
       novosItens[index][campo] = valor as never
     }
 
-    // Recalcular subtotal
-    novosItens[index].subtotal =
-      novosItens[index].quantidade * novosItens[index].preco_unitario
-
     setItens(novosItens)
-  }
-
-  const calcularTotal = () => {
-    return itens.reduce((sum, item) => sum + item.subtotal, 0)
   }
 
   const validarFormulario = () => {
@@ -221,10 +231,6 @@ export default function NovaVendaPage() {
         setErro('Quantidade deve ser maior que zero')
         return false
       }
-      if (item.preco_unitario <= 0) {
-        setErro('Preço unitário deve ser maior que zero')
-        return false
-      }
     }
 
     return true
@@ -239,9 +245,7 @@ export default function NovaVendaPage() {
     setLoading(true)
 
     try {
-      const valorTotal = calcularTotal()
-
-      // Inserir venda
+      // Inserir venda (valor_total = 0 pois não temos preços)
       const { data: vendaData, error: vendaError } = await supabase
         .from('vendas')
         .insert({
@@ -249,7 +253,7 @@ export default function NovaVendaPage() {
           unidade_id: unidadeSelecionada,
           data_venda: dataVenda,
           numero_identificacao: numeroIdentificacao,
-          valor_total: valorTotal,
+          valor_total: 0,
           observacoes: observacoes || null,
         })
         .select()
@@ -257,12 +261,12 @@ export default function NovaVendaPage() {
 
       if (vendaError) throw vendaError
 
-      // Inserir itens da venda
+      // Inserir itens da venda (sem preço)
       const itensParaInserir = itens.map((item) => ({
         venda_id: vendaData.id,
         produto_id: item.produto_id,
         quantidade: item.quantidade,
-        preco_unitario: item.preco_unitario,
+        preco_unitario: 0,
       }))
 
       const { error: itensError } = await supabase
@@ -281,6 +285,17 @@ export default function NovaVendaPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const unidadesFiltradas = unidades.filter((u) =>
+    u.label.toLowerCase().includes(buscaUnidade.toLowerCase())
+  )
+
+  const getProdutosFiltrados = (index: number) => {
+    const busca = buscaProduto[index] || ''
+    return produtos.filter((p) =>
+      p.label.toLowerCase().includes(busca.toLowerCase())
+    )
   }
 
   if (sucesso) {
@@ -354,23 +369,32 @@ export default function NovaVendaPage() {
               />
             </div>
 
-            {/* Unidade */}
+            {/* Unidade com Busca */}
             <div className="md:col-span-2">
               <label className="label">Unidade *</label>
+              <input
+                type="text"
+                value={buscaUnidade}
+                onChange={(e) => setBuscaUnidade(e.target.value)}
+                className="input-field mb-2"
+                placeholder="Digite para buscar..."
+                disabled={loading}
+              />
               <select
                 value={unidadeSelecionada}
                 onChange={(e) => {
                   setUnidadeSelecionada(e.target.value)
-                  setItens([]) // Limpa produtos ao trocar unidade
+                  setItens([])
                 }}
                 className="input-field"
                 required
-                disabled={loading || unidades.length === 1}
+                disabled={loading}
+                size={Math.min(unidadesFiltradas.length + 1, 5)}
               >
                 <option value="">Selecione a unidade...</option>
-                {unidades.map((unidade) => (
+                {unidadesFiltradas.map((unidade) => (
                   <option key={unidade.id} value={unidade.id}>
-                    {unidade.nome} - {unidade.cnpj}
+                    {unidade.label}
                   </option>
                 ))}
               </select>
@@ -427,9 +451,21 @@ export default function NovaVendaPage() {
                   key={index}
                   className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 bg-gray-50 rounded-lg"
                 >
-                  {/* Produto */}
-                  <div className="md:col-span-5">
+                  {/* Produto com Busca */}
+                  <div className="md:col-span-10">
                     <label className="label">Produto *</label>
+                    <input
+                      type="text"
+                      value={buscaProduto[index] || ''}
+                      onChange={(e) => {
+                        const novasBuscas = [...buscaProduto]
+                        novasBuscas[index] = e.target.value
+                        setBuscaProduto(novasBuscas)
+                      }}
+                      className="input-field mb-2"
+                      placeholder="Digite para buscar..."
+                      disabled={loading}
+                    />
                     <select
                       value={item.produto_id}
                       onChange={(e) =>
@@ -438,19 +474,20 @@ export default function NovaVendaPage() {
                       className="input-field"
                       required
                       disabled={loading}
+                      size={Math.min(getProdutosFiltrados(index).length + 1, 5)}
                     >
                       <option value="">Selecione...</option>
-                      {produtos.map((produto) => (
+                      {getProdutosFiltrados(index).map((produto) => (
                         <option key={produto.id} value={produto.id}>
-                          {produto.nome_sintetico} - {produto.numero}
+                          {produto.label}
                         </option>
                       ))}
                     </select>
                   </div>
 
                   {/* Quantidade */}
-                  <div className="md:col-span-2">
-                    <label className="label">Quantidade *</label>
+                  <div className="md:col-span-1">
+                    <label className="label">Qtd *</label>
                     <input
                       type="number"
                       min="1"
@@ -464,56 +501,27 @@ export default function NovaVendaPage() {
                     />
                   </div>
 
-                  {/* Preço Unitário */}
-                  <div className="md:col-span-2">
-                    <label className="label">Preço Unit. *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      value={item.preco_unitario}
-                      onChange={(e) =>
-                        atualizarItem(index, 'preco_unitario', Number(e.target.value))
-                      }
-                      className="input-field"
-                      placeholder="0,00"
-                      required
-                      disabled={loading}
-                    />
-                  </div>
-
-                  {/* Subtotal */}
-                  <div className="md:col-span-2">
-                    <label className="label">Subtotal</label>
-                    <input
-                      type="text"
-                      value={`R$ ${item.subtotal.toFixed(2)}`}
-                      className="input-field bg-gray-200"
-                      disabled
-                    />
-                  </div>
-
                   {/* Remover */}
                   <div className="md:col-span-1 flex items-end">
                     <button
                       type="button"
                       onClick={() => removerItem(index)}
-                      className="btn-danger w-full md:w-auto p-2"
+                      className="btn-danger w-full p-2"
                       disabled={loading}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4 mx-auto" />
                     </button>
                   </div>
                 </div>
               ))}
 
-              {/* Total */}
+              {/* Total de Itens */}
               <div className="flex justify-end items-center gap-4 pt-4 border-t border-gray-200">
                 <span className="text-lg font-semibold text-gray-700">
-                  Valor Total:
+                  Total de Produtos:
                 </span>
                 <span className="text-2xl font-bold text-primary-600">
-                  R$ {calcularTotal().toFixed(2)}
+                  {itens.reduce((sum, item) => sum + item.quantidade, 0)}
                 </span>
               </div>
             </div>
