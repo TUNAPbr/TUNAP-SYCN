@@ -2,21 +2,30 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { DataTable } from '@/components/admin/DataTable'
-import { X, AlertCircle, CheckCircle, UserPlus } from 'lucide-react'
+import { SearchableSelect } from '@/components/SearchableSelect'
+import { Plus, Search, X, AlertCircle, CheckCircle, UserPlus } from 'lucide-react'
 
 export default function UsuariosEquipesPage() {
   const [vinculos, setVinculos] = useState<any[]>([])
   const [usuarios, setUsuarios] = useState<any[]>([])
   const [equipes, setEquipes] = useState<any[]>([])
+  const [conglomerados, setConglomerados] = useState<any[]>([])
+  const [grupos, setGrupos] = useState<any[]>([])
+  const [unidades, setUnidades] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
+  const [search, setSearch] = useState('')
 
   // Form states
   const [usuarioId, setUsuarioId] = useState('')
   const [equipesSelecionadas, setEquipesSelecionadas] = useState<string[]>([])
+
+  // Filtros
+  const [filtroConglomerado, setFiltroConglomerado] = useState('')
+  const [filtroGrupo, setFiltroGrupo] = useState('')
+  const [filtroUnidade, setFiltroUnidade] = useState('')
 
   useEffect(() => {
     loadData()
@@ -24,13 +33,23 @@ export default function UsuariosEquipesPage() {
 
   const loadData = async () => {
     try {
-      const [vinculosRes, usuariosRes, equipesRes] = await Promise.all([
+      const [vinculosRes, usuariosRes, equipesRes, conglomeradosRes, gruposRes, unidadesRes] = await Promise.all([
         supabase
           .from('usuario_equipes')
           .select(`
             *,
             usuarios (nome_completo, email),
-            equipes (nome, unidades (nome))
+            equipes (
+              nome,
+              unidades (
+                nome,
+                grupos (
+                  nome,
+                  conglomerados (nome)
+                ),
+                marcas (nome)
+              )
+            )
           `)
           .order('created_at', { ascending: false }),
         supabase
@@ -40,7 +59,32 @@ export default function UsuariosEquipesPage() {
           .order('nome_completo'),
         supabase
           .from('equipes')
-          .select('*, unidades (nome)')
+          .select(`
+            *,
+            unidades (
+              nome,
+              grupos (
+                nome,
+                conglomerados (nome)
+              ),
+              marcas (nome)
+            )
+          `)
+          .eq('ativo', true)
+          .order('nome'),
+        supabase
+          .from('conglomerados')
+          .select('*')
+          .eq('ativo', true)
+          .order('nome'),
+        supabase
+          .from('grupos')
+          .select('*, conglomerados (nome)')
+          .eq('ativo', true)
+          .order('nome'),
+        supabase
+          .from('unidades')
+          .select('*, grupos (nome)')
           .eq('ativo', true)
           .order('nome')
       ])
@@ -52,6 +96,9 @@ export default function UsuariosEquipesPage() {
       setVinculos(vinculosRes.data || [])
       setUsuarios(usuariosRes.data || [])
       setEquipes(equipesRes.data || [])
+      setConglomerados(conglomeradosRes.data || [])
+      setGrupos(gruposRes.data || [])
+      setUnidades(unidadesRes.data || [])
     } catch (error: any) {
       console.error('Erro:', error)
       setErro(error.message)
@@ -63,19 +110,23 @@ export default function UsuariosEquipesPage() {
   const handleAdd = () => {
     setUsuarioId('')
     setEquipesSelecionadas([])
+    setFiltroConglomerado('')
+    setFiltroGrupo('')
+    setFiltroUnidade('')
     setErro('')
     setSucesso('')
     setShowModal(true)
   }
 
-  const handleDelete = async (row: any) => {
-    if (!confirm('Deseja realmente remover este vínculo?')) return
+  const handleRemoveVinculo = async (vinculo: any) => {
+    const equipeNome = vinculo.equipes?.nome
+    if (!confirm(`Deseja realmente remover o usuário da equipe "${equipeNome}"?`)) return
 
     try {
       const { error } = await supabase
         .from('usuario_equipes')
         .delete()
-        .eq('id', row.id)
+        .eq('id', vinculo.id)
 
       if (error) throw error
 
@@ -98,7 +149,6 @@ export default function UsuariosEquipesPage() {
     }
 
     try {
-      // Verificar quais vínculos já existem
       const { data: existentes } = await supabase
         .from('usuario_equipes')
         .select('equipe_id')
@@ -106,7 +156,6 @@ export default function UsuariosEquipesPage() {
 
       const equipesExistentes = existentes?.map(e => e.equipe_id) || []
       
-      // Filtrar apenas as novas
       const novasEquipes = equipesSelecionadas.filter(
         equipeId => !equipesExistentes.includes(equipeId)
       )
@@ -116,7 +165,6 @@ export default function UsuariosEquipesPage() {
         return
       }
 
-      // Criar vínculos
       const vinculos = novasEquipes.map(equipeId => ({
         usuario_id: usuarioId,
         equipe_id: equipeId,
@@ -149,110 +197,168 @@ export default function UsuariosEquipesPage() {
     )
   }
 
-  // Agrupar vínculos por usuário para exibição
+  // Agrupar vínculos por usuário
   const vinculosAgrupados = vinculos.reduce((acc: any, vinculo) => {
     const userId = vinculo.usuario_id
     if (!acc[userId]) {
       acc[userId] = {
         usuario: vinculo.usuarios,
-        equipes: [],
         vinculos: [],
       }
     }
-    acc[userId].equipes.push(vinculo.equipes)
     acc[userId].vinculos.push(vinculo)
     return acc
   }, {})
 
-  const dadosTabela = Object.values(vinculosAgrupados).map((item: any) => ({
-    usuario: item.usuario,
-    equipes: item.equipes,
-    vinculos: item.vinculos,
+  const dadosTabela = Object.values(vinculosAgrupados)
+    .filter((item: any) => {
+      if (!search) return true
+      const usuario = item.usuario
+      return (
+        usuario?.nome_completo?.toLowerCase().includes(search.toLowerCase()) ||
+        usuario?.email?.toLowerCase().includes(search.toLowerCase())
+      )
+    })
+
+  // Options para SearchableSelect de usuários
+  const usuariosOptions = usuarios.map(u => ({
+    value: u.id,
+    label: `${u.nome_completo} - ${u.email}`,
   }))
 
-  const columns = [
-    {
-      key: 'usuario',
-      label: 'Usuário',
-      render: (value: any) => (
-        <div>
-          <p className="font-medium text-gray-900">
-            {value?.nome_completo || '-'}
-          </p>
-          <p className="text-xs text-gray-500">
-            {value?.email || '-'}
-          </p>
-        </div>
-      ),
-    },
-    {
-      key: 'equipes',
-      label: 'Equipes',
-      render: (value: any[]) => (
-        <div className="flex flex-wrap gap-1">
-          {value.map((equipe, idx) => (
-            <span
-              key={idx}
-              className="px-2 py-1 bg-primary-100 text-primary-700 rounded text-xs font-medium"
-            >
-              {equipe?.nome || '-'}
-            </span>
-          ))}
-        </div>
-      ),
-    },
-    {
-      key: 'vinculos',
-      label: 'Unidades',
-      render: (value: any[]) => (
-        <div className="text-sm text-gray-600">
-          {Array.from(new Set(value.map(v => v.equipes?.unidades?.nome))).join(', ')}
-        </div>
-      ),
-    },
-  ]
+  // Filtrar equipes baseado nos filtros
+  const equipesFiltradasModal = equipes.filter(equipe => {
+    const unidade = equipe.unidades
+    const grupo = unidade?.grupos
+    const conglomerado = grupo?.conglomerados
 
-  // Custom actions para remover vínculos individuais
-  const customActions = (row: any) => {
-    return (
-      <div className="flex flex-col gap-1">
-        {row.vinculos.map((vinculo: any) => (
-          <button
-            key={vinculo.id}
-            onClick={() => handleDelete(vinculo)}
-            className="text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded transition-colors text-left"
-            title={`Remover de ${vinculo.equipes?.nome}`}
-          >
-            Remover de {vinculo.equipes?.nome}
-          </button>
-        ))}
-      </div>
-    )
-  }
+    if (filtroConglomerado && conglomerado?.id !== filtroConglomerado) return false
+    if (filtroGrupo && grupo?.id !== filtroGrupo) return false
+    if (filtroUnidade && unidade?.id !== filtroUnidade) return false
+
+    return true
+  })
 
   return (
-    <>
+    <div className="space-y-4">
       {sucesso && (
-        <div className="mb-4 flex items-center gap-2 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
+        <div className="flex items-center gap-2 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
           <CheckCircle className="w-5 h-5" />
           <span>{sucesso}</span>
         </div>
       )}
 
-      <DataTable
-        title="Usuários x Equipes"
-        columns={columns}
-        data={dadosTabela}
-        onAdd={handleAdd}
-        searchPlaceholder="Buscar por usuário..."
-        loading={loading}
-        customActions={customActions}
-      />
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Usuários x Equipes</h1>
+        <button onClick={handleAdd} className="btn-primary flex items-center gap-2">
+          <Plus className="w-4 h-4" />
+          Adicionar
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="input-field pl-10"
+          placeholder="Buscar por usuário..."
+        />
+      </div>
+
+      {/* Table */}
+      <div className="card overflow-x-auto">
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full mx-auto mb-4" />
+            <p className="text-gray-600">Carregando...</p>
+          </div>
+        ) : dadosTabela.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">
+            <p>Nenhum registro encontrado</p>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase w-1/4">
+                  Usuário
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">
+                  Equipes
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {dadosTabela.map((item: any, idx: number) => (
+                <tr key={idx} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm align-top">
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {item.usuario?.nome_completo || '-'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {item.usuario?.email || '-'}
+                      </p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <div className="flex flex-wrap gap-2">
+                      {item.vinculos.map((vinculo: any) => {
+                        const equipe = vinculo.equipes
+                        const unidade = equipe?.unidades
+                        const grupo = unidade?.grupos
+                        const conglomerado = grupo?.conglomerados
+                        const marca = unidade?.marcas
+
+                        // Montar label: Grupo > Marca > Unidade > Equipe
+                        const partes = []
+                        if (grupo?.nome) partes.push(grupo.nome)
+                        if (marca?.nome) partes.push(marca.nome)
+                        if (unidade?.nome) partes.push(unidade.nome)
+                        if (equipe?.nome) partes.push(equipe.nome)
+
+                        const label = partes.join(' > ')
+
+                        return (
+                          <span
+                            key={vinculo.id}
+                            className="inline-flex items-center gap-1 px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-xs font-medium"
+                          >
+                            <span>{label}</span>
+                            <button
+                              onClick={() => handleRemoveVinculo(vinculo)}
+                              className="hover:bg-primary-200 rounded-full p-0.5 transition-colors"
+                              title="Remover vínculo"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        )
+                      })}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Footer */}
+      {!loading && dadosTabela.length > 0 && (
+        <div className="text-sm text-gray-600">
+          Mostrando {dadosTabela.length} usuário(s)
+        </div>
+      )}
 
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg max-w-2xl w-full p-6 my-8">
+          <div className="bg-white rounded-lg max-w-3xl w-full p-6 my-8">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <UserPlus className="w-6 h-6 text-primary-600" />
@@ -268,63 +374,122 @@ export default function UsuariosEquipesPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="label">Usuário *</label>
-                <select
-                  value={usuarioId}
-                  onChange={(e) => setUsuarioId(e.target.value)}
-                  className="input-field"
-                  required
-                >
-                  <option value="">Selecione um usuário...</option>
-                  {usuarios.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.nome_completo} - {u.email}
-                    </option>
-                  ))}
-                </select>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* SearchableSelect para Usuário */}
+              <SearchableSelect
+                label="Usuário"
+                options={usuariosOptions}
+                value={usuarioId}
+                onChange={setUsuarioId}
+                placeholder="Buscar usuário..."
+                required
+              />
+
+              {/* Filtros */}
+              <div className="border-t pt-4">
+                <h3 className="font-semibold text-gray-900 mb-3">Filtros (opcionais)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="label">Conglomerado</label>
+                    <select
+                      value={filtroConglomerado}
+                      onChange={(e) => setFiltroConglomerado(e.target.value)}
+                      className="input-field"
+                    >
+                      <option value="">Todos</option>
+                      {conglomerados.map(c => (
+                        <option key={c.id} value={c.id}>{c.nome}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="label">Grupo</label>
+                    <select
+                      value={filtroGrupo}
+                      onChange={(e) => setFiltroGrupo(e.target.value)}
+                      className="input-field"
+                    >
+                      <option value="">Todos</option>
+                      {grupos.map(g => (
+                        <option key={g.id} value={g.id}>
+                          {g.nome} {g.conglomerados?.nome && `(${g.conglomerados.nome})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="label">Unidade</label>
+                    <select
+                      value={filtroUnidade}
+                      onChange={(e) => setFiltroUnidade(e.target.value)}
+                      className="input-field"
+                    >
+                      <option value="">Todas</option>
+                      {unidades.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.nome} {u.grupos?.nome && `(${u.grupos.nome})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
+              {/* Equipes */}
               <div>
                 <label className="label">Equipes * (selecione uma ou mais)</label>
-                <div className="border border-gray-300 rounded-lg p-3 max-h-64 overflow-y-auto space-y-2">
-                  {equipes.length === 0 ? (
+                <div className="border border-gray-300 rounded-lg p-3 max-h-80 overflow-y-auto space-y-2">
+                  {equipesFiltradasModal.length === 0 ? (
                     <p className="text-sm text-gray-500 text-center py-4">
-                      Nenhuma equipe disponível
+                      Nenhuma equipe encontrada com os filtros aplicados
                     </p>
                   ) : (
-                    equipes.map((equipe) => (
-                      <label
-                        key={equipe.id}
-                        className={`
-                          flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors
-                          ${equipesSelecionadas.includes(equipe.id)
-                            ? 'bg-primary-50 border-2 border-primary-500'
-                            : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
-                          }
-                        `}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={equipesSelecionadas.includes(equipe.id)}
-                          onChange={() => toggleEquipe(equipe.id)}
-                          className="w-4 h-4 text-primary-600 rounded"
-                        />
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-900">
-                            {equipe.nome}
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            Unidade: {equipe.unidades?.nome || 'N/A'}
-                          </p>
-                        </div>
-                      </label>
-                    ))
+                    equipesFiltradasModal.map((equipe) => {
+                      const unidade = equipe.unidades
+                      const grupo = unidade?.grupos
+                      const conglomerado = grupo?.conglomerados
+                      const marca = unidade?.marcas
+
+                      const partes = []
+                      if (grupo?.nome) partes.push(grupo.nome)
+                      if (marca?.nome) partes.push(marca.nome)
+                      if (unidade?.nome) partes.push(unidade.nome)
+                      if (equipe.nome) partes.push(equipe.nome)
+
+                      const label = partes.join(' > ')
+
+                      return (
+                        <label
+                          key={equipe.id}
+                          className={`
+                            flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors
+                            ${equipesSelecionadas.includes(equipe.id)
+                              ? 'bg-primary-50 border-2 border-primary-500'
+                              : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
+                            }
+                          `}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={equipesSelecionadas.includes(equipe.id)}
+                            onChange={() => toggleEquipe(equipe.id)}
+                            className="w-4 h-4 text-primary-600 rounded"
+                          />
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-900 text-sm">
+                              {label}
+                            </p>
+                          </div>
+                        </label>
+                      )
+                    })
                   )}
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
                   {equipesSelecionadas.length} equipe(s) selecionada(s)
+                  {equipesFiltradasModal.length > 0 && ` de ${equipesFiltradasModal.length} disponível(is)`}
                 </p>
               </div>
 
@@ -355,6 +520,6 @@ export default function UsuariosEquipesPage() {
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
