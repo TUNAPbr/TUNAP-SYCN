@@ -5,7 +5,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// Tipos TypeScript para o banco de dados
+// Tipos TypeScript atualizados
 export type TipoEmpresa = 'CLIENTE' | 'TUNAP'
 
 export interface Usuario {
@@ -25,12 +25,15 @@ export interface NivelHierarquico {
   tipo_empresa: TipoEmpresa
   nivel_acesso: number
   label: string
+  created_at: string
 }
 
 export interface Conglomerado {
   id: string
   nome: string
   ativo: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface Grupo {
@@ -38,6 +41,15 @@ export interface Grupo {
   conglomerado_id: string
   nome: string
   ativo: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Marca {
+  id: string
+  nome: string
+  categoria: string
+  created_at: string
 }
 
 export interface Unidade {
@@ -46,6 +58,9 @@ export interface Unidade {
   nome: string
   cnpj: string
   ativo: boolean
+  marca_id: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface Equipe {
@@ -53,27 +68,37 @@ export interface Equipe {
   unidade_id: string
   nome: string
   ativo: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface Produto {
   id: string
-  unidade_id: string
+  referencia: string
   nome: string
-  codigo: string
-  descricao?: string
-  preco_base: number
+  nome_sintetico: string
+  numero: string
+  imagem: string | null
   ativo: boolean
+  created_at: string
+}
+
+export interface ProdutoUnidade {
+  id: number
+  produto_id: string
+  unidade_id: string
+  referencia_local: string | null
+  created_at: string
 }
 
 export interface Venda {
   id: string
   usuario_id: string
   unidade_id: string
-  equipe_id: string
   data_venda: string
   numero_identificacao: string
   valor_total: number
-  observacoes?: string
+  observacoes: string | null
   created_at: string
   updated_at: string
 }
@@ -85,11 +110,16 @@ export interface VendaItem {
   quantidade: number
   preco_unitario: number
   subtotal: number
+  created_at: string
+}
+
+// Tipos combinados para queries
+export interface ProdutoComUnidade extends Produto {
+  produtos_unidades?: ProdutoUnidade[]
 }
 
 export interface VendaComDetalhes extends Venda {
   itens?: VendaItem[]
-  produtos?: Produto[]
   unidade?: Unidade
-  equipe?: Equipe
+  usuario?: Usuario
 }
