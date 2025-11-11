@@ -3,14 +3,12 @@
 import { useEffect, useState } from 'react'
 import { useUserStore } from '@/lib/store'
 import { supabase } from '@/lib/supabase'
-import { TrendingUp, DollarSign, ShoppingBag, Calendar } from 'lucide-react'
+import { ShoppingBag, TrendingUp } from 'lucide-react'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 
 interface DashboardStats {
   vendasHoje: number
   vendasMes: number
-  valorHoje: number
-  valorMes: number
 }
 
 export default function DashboardPage() {
@@ -18,8 +16,6 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     vendasHoje: 0,
     vendasMes: 0,
-    valorHoje: 0,
-    valorMes: 0,
   })
   const [loading, setLoading] = useState(true)
 
@@ -50,7 +46,6 @@ export default function DashboardPage() {
         setStats((prev) => ({
           ...prev,
           vendasHoje: vendasHoje.length,
-          valorHoje: vendasHoje.reduce((sum, v) => sum + Number(v.valor_total), 0),
         }))
       }
 
@@ -58,7 +53,6 @@ export default function DashboardPage() {
         setStats((prev) => ({
           ...prev,
           vendasMes: vendasMes.length,
-          valorMes: vendasMes.reduce((sum, v) => sum + Number(v.valor_total), 0),
         }))
       }
     } catch (error) {
@@ -66,13 +60,6 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value)
   }
 
   const cards = [
@@ -83,22 +70,10 @@ export default function DashboardPage() {
       color: 'bg-blue-500',
     },
     {
-      title: 'Valor Hoje',
-      value: formatCurrency(stats.valorHoje),
-      icon: DollarSign,
-      color: 'bg-green-500',
-    },
-    {
       title: 'Vendas do Mês',
       value: stats.vendasMes,
       icon: TrendingUp,
       color: 'bg-purple-500',
-    },
-    {
-      title: 'Valor do Mês',
-      value: formatCurrency(stats.valorMes),
-      icon: Calendar,
-      color: 'bg-orange-500',
     },
   ]
 
@@ -114,15 +89,15 @@ export default function DashboardPage() {
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map((i) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[1, 2].map((i) => (
             <div key={i} className="card animate-pulse">
               <div className="h-20 bg-gray-200 rounded" />
             </div>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {cards.map((card, index) => (
             <div key={index} className="card">
               <div className="flex items-center justify-between">
