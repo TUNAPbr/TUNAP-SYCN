@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Mail, Lock, AlertCircle } from 'lucide-react'
+import Image from 'next/image'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -18,7 +19,6 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      // Fazer login com Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password: senha,
@@ -27,7 +27,6 @@ export default function LoginPage() {
       if (authError) throw authError
 
       if (authData.user) {
-        // Buscar dados do usuário na tabela usuarios
         const { data: userData, error: userError } = await supabase
           .from('usuarios')
           .select(`
@@ -43,7 +42,6 @@ export default function LoginPage() {
           throw new Error('Usuário inativo ou não encontrado')
         }
 
-        // Redirecionar para dashboard
         router.push('/dashboard')
       }
     } catch (error: any) {
@@ -58,10 +56,16 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-500 to-primary-700 px-4">
       <div className="max-w-md w-full">
         <div className="card">
-          {/* Logo/Título */}
+          {/* Logo e Título */}
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">TUNAP Vendas</h1>
-            <p className="text-gray-600">Sistema de Controle de Vendas</p>
+            {/* Logo TUNAP */}
+            <div className="mb-6 flex justify-center">
+              <div className="w-32 h-32 bg-primary-600 rounded-2xl flex items-center justify-center">
+                <span className="text-white text-5xl font-bold">T</span>
+              </div>
+            </div>
+            
+            <h1 className="text-3xl font-bold text-gray-900">TUNAP Sync</h1>
           </div>
 
           {/* Formulário */}
