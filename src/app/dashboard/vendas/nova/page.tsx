@@ -4,23 +4,18 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUserStore } from '@/lib/store'
 import { supabase } from '@/lib/supabase'
+import { SearchableSelect } from '@/components/SearchableSelect'
 import { Plus, Trash2, Save, ArrowLeft, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface UnidadeFormatada {
-  id: string
-  nome: string
-  cnpj: string
-  grupo_nome: string
-  marca_nome: string
-  label: string // "Grupo Marca Unidade - CNPJ"
+  value: string
+  label: string
 }
 
 interface ProdutoFormatado {
-  id: string
-  referencia_local: string
-  nome_sintetico: string
-  label: string // "referencia_local - nome_sintetico"
+  value: string
+  label: string
 }
 
 interface ItemVenda {
@@ -47,10 +42,6 @@ export default function NovaVendaPage() {
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState(false)
 
-  // Estados de busca
-  const [buscaUnidade, setBuscaUnidade] = useState('')
-  const [buscaProduto, setBuscaProduto] = useState<string[]>([])
-
   useEffect(() => {
     loadUnidades()
   }, [user])
@@ -60,6 +51,7 @@ export default function NovaVendaPage() {
       loadProdutos()
     } else {
       setProdutos([])
+      setItens([])
     }
   }, [unidadeSelecionada])
 
@@ -89,14 +81,13 @@ export default function NovaVendaPage() {
 
       const unidadeIds = Array.from(new Set(equipesCompletas?.map((e) => e.unidade_id) || []))
 
-      // Buscar unidades com grupo e marca
       const { data: unidadesData, error: unidadesError } = await supabase
         .from('unidades')
         .select(`
           id,
           nome,
           cnpj,
-          grupos (nome),
+          grupos (nome, conglomerados (nome)),
           marcas (nome)
         `)
         .in('id', unidadeIds)
@@ -107,22 +98,27 @@ export default function NovaVendaPage() {
 
       if (unidadesData) {
         const unidadesFormatadas: UnidadeFormatada[] = unidadesData.map((u: any) => {
-          const grupoNome = u.grupos?.nome || 'Sem Grupo'
-          const marcaNome = u.marcas?.nome || 'Sem Marca'
+          const conglomerado = u.grupos?.conglomerados?.nome || ''
+          const grupo = u.grupos?.nome || ''
+          const marca = u.marcas?.nome || ''
+          
+          // Formato: "Conglomerado > Grupo > Marca > Unidade - CNPJ"
+          let label = ''
+          if (conglomerado) label += conglomerado + ' > '
+          if (grupo) label += grupo + ' > '
+          if (marca) label += marca + ' > '
+          label += `${u.nome} - ${formatCNPJ(u.cnpj)}`
+
           return {
-            id: u.id,
-            nome: u.nome,
-            cnpj: u.cnpj,
-            grupo_nome: grupoNome,
-            marca_nome: marcaNome,
-            label: `${grupoNome} ${marcaNome} ${u.nome} - ${u.cnpj}`,
+            value: u.id,
+            label,
           }
         })
 
         setUnidades(unidadesFormatadas)
 
         if (unidadesFormatadas.length === 1) {
-          setUnidadeSelecionada(unidadesFormatadas[0].id)
+          setUnidadeSelecionada(unidadesFormatadas[0].value)
         }
       }
     } catch (error: any) {
@@ -153,19 +149,26 @@ export default function NovaVendaPage() {
         const produtosFormatados: ProdutoFormatado[] = data
           .filter((item: any) => item.produtos)
           .map((item: any) => ({
-            id: item.produtos.id,
-            referencia_local: item.referencia_local || 'S/REF',
-            nome_sintetico: item.produtos.nome_sintetico,
+            value: item.produtos.id,
             label: `${item.referencia_local || 'S/REF'} - ${item.produtos.nome_sintetico}`,
           }))
 
         setProdutos(produtosFormatados)
-        setBuscaProduto(new Array(itens.length).fill(''))
       }
     } catch (error: any) {
       console.error('Erro ao carregar produtos:', error)
       setErro('Erro ao carregar produtos: ' + error.message)
     }
+  }
+
+  const formatCNPJ = (value: string) => {
+    const numbers = value.replace(/\D/g, '')
+    return numbers
+      .replace(/(\d{2})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1/$2')
+      .replace(/(\d{4})(\d)/, '$1-$2')
+      .slice(0, 18)
   }
 
   const adicionarItem = () => {
@@ -177,22 +180,20 @@ export default function NovaVendaPage() {
         quantidade: 1,
       },
     ])
-    setBuscaProduto([...buscaProduto, ''])
   }
 
   const removerItem = (index: number) => {
     setItens(itens.filter((_, i) => i !== index))
-    setBuscaProduto(buscaProduto.filter((_, i) => i !== index))
   }
 
   const atualizarItem = (index: number, campo: keyof ItemVenda, valor: any) => {
     const novosItens = [...itens]
     
     if (campo === 'produto_id') {
-      const produto = produtos.find((p) => p.id === valor)
+      const produto = produtos.find((p) => p.value === valor)
       if (produto) {
         novosItens[index].produto_id = valor
-        novosItens[index].produto_nome = produto.nome_sintetico
+        novosItens[index].produto_nome = produto.label
       }
     } else {
       novosItens[index][campo] = valor as never
@@ -245,7 +246,6 @@ export default function NovaVendaPage() {
     setLoading(true)
 
     try {
-      // Inserir venda (valor_total = 0 pois não temos preços)
       const { data: vendaData, error: vendaError } = await supabase
         .from('vendas')
         .insert({
@@ -261,7 +261,6 @@ export default function NovaVendaPage() {
 
       if (vendaError) throw vendaError
 
-      // Inserir itens da venda (sem preço)
       const itensParaInserir = itens.map((item) => ({
         venda_id: vendaData.id,
         produto_id: item.produto_id,
@@ -285,17 +284,6 @@ export default function NovaVendaPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const unidadesFiltradas = unidades.filter((u) =>
-    u.label.toLowerCase().includes(buscaUnidade.toLowerCase())
-  )
-
-  const getProdutosFiltrados = (index: number) => {
-    const busca = buscaProduto[index] || ''
-    return produtos.filter((p) =>
-      p.label.toLowerCase().includes(busca.toLowerCase())
-    )
   }
 
   if (sucesso) {
@@ -369,35 +357,20 @@ export default function NovaVendaPage() {
               />
             </div>
 
-            {/* Unidade com Busca */}
+            {/* Unidade com SearchableSelect */}
             <div className="md:col-span-2">
-              <label className="label">Unidade *</label>
-              <input
-                type="text"
-                value={buscaUnidade}
-                onChange={(e) => setBuscaUnidade(e.target.value)}
-                className="input-field mb-2"
-                placeholder="Digite para buscar..."
-                disabled={loading}
-              />
-              <select
+              <SearchableSelect
+                label="Unidade"
+                options={unidades}
                 value={unidadeSelecionada}
-                onChange={(e) => {
-                  setUnidadeSelecionada(e.target.value)
+                onChange={(value) => {
+                  setUnidadeSelecionada(value)
                   setItens([])
                 }}
-                className="input-field"
-                required
+                placeholder="Selecione a unidade..."
                 disabled={loading}
-                size={Math.min(unidadesFiltradas.length + 1, 5)}
-              >
-                <option value="">Selecione a unidade...</option>
-                {unidadesFiltradas.map((unidade) => (
-                  <option key={unidade.id} value={unidade.id}>
-                    {unidade.label}
-                  </option>
-                ))}
-              </select>
+                required
+              />
             </div>
           </div>
 
@@ -451,38 +424,17 @@ export default function NovaVendaPage() {
                   key={index}
                   className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 bg-gray-50 rounded-lg"
                 >
-                  {/* Produto com Busca */}
+                  {/* Produto com SearchableSelect */}
                   <div className="md:col-span-10">
-                    <label className="label">Produto *</label>
-                    <input
-                      type="text"
-                      value={buscaProduto[index] || ''}
-                      onChange={(e) => {
-                        const novasBuscas = [...buscaProduto]
-                        novasBuscas[index] = e.target.value
-                        setBuscaProduto(novasBuscas)
-                      }}
-                      className="input-field mb-2"
-                      placeholder="Digite para buscar..."
-                      disabled={loading}
-                    />
-                    <select
+                    <SearchableSelect
+                      label="Produto"
+                      options={produtos}
                       value={item.produto_id}
-                      onChange={(e) =>
-                        atualizarItem(index, 'produto_id', e.target.value)
-                      }
-                      className="input-field"
-                      required
+                      onChange={(value) => atualizarItem(index, 'produto_id', value)}
+                      placeholder="Selecione o produto..."
                       disabled={loading}
-                      size={Math.min(getProdutosFiltrados(index).length + 1, 5)}
-                    >
-                      <option value="">Selecione...</option>
-                      {getProdutosFiltrados(index).map((produto) => (
-                        <option key={produto.id} value={produto.id}>
-                          {produto.label}
-                        </option>
-                      ))}
-                    </select>
+                      required
+                    />
                   </div>
 
                   {/* Quantidade */}
@@ -508,6 +460,7 @@ export default function NovaVendaPage() {
                       onClick={() => removerItem(index)}
                       className="btn-danger w-full p-2"
                       disabled={loading}
+                      title="Remover item"
                     >
                       <Trash2 className="w-4 h-4 mx-auto" />
                     </button>
