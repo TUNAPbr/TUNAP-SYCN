@@ -58,18 +58,22 @@ export default function LoginPage() {
         <div className="card">
           {/* Logo e Título */}
           <div className="text-center mb-8">
-            {/* Logo TUNAP */}
+            {/* Logo TUNAP - MAIOR */}
             <div className="mb-6 flex justify-center">
-              <Image 
-                src="/logo-tunap.png" 
-                alt="TUNAP Logo" 
-                width={40} 
-                height={40}
-                className="rounded-lg"
-              />
+              <div className="relative w-24 h-24">
+                <Image 
+                  src="/logo-tunap.png" 
+                  alt="TUNAP Logo" 
+                  width={96} 
+                  height={96}
+                  className="rounded-lg"
+                  priority
+                />
+              </div>
             </div>
             
             <h1 className="text-3xl font-bold text-gray-900">TUNAP Sync</h1>
+            <p className="text-gray-600 mt-2">Sistema de Gestão de Vendas</p>
           </div>
 
           {/* Formulário */}
