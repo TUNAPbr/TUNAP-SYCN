@@ -15,6 +15,7 @@ export default function UsuariosPage() {
   const [editando, setEditando] = useState<any>(null)
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
+  const [salvando, setSalvando] = useState(false)
 
   // Form states
   const [nomeCompleto, setNomeCompleto] = useState('')
@@ -78,7 +79,7 @@ export default function UsuariosPage() {
     setEditando(row)
     setNomeCompleto(row.nome_completo)
     setEmail(row.email)
-    setSenha('') // Não mostrar senha
+    setSenha('')
     setNivelHierarquicoId(row.nivel_hierarquico_id)
     setTipoEmpresa(row.tipo_empresa)
     setAtivo(row.ativo)
@@ -88,10 +89,9 @@ export default function UsuariosPage() {
   }
 
   const handleDelete = async (row: any) => {
-    if (!confirm(`Deseja realmente excluir "${row.nome_completo}"?`)) return
+    if (!confirm(`Deseja realmente desativar "${row.nome_completo}"?`)) return
 
     try {
-      // Desativar ao invés de excluir
       const { error } = await supabase
         .from('usuarios')
         .update({ ativo: false })
@@ -100,6 +100,8 @@ export default function UsuariosPage() {
       if (error) throw error
 
       await loadData()
+      setSucesso('Usuário desativado com sucesso!')
+      setTimeout(() => setSucesso(''), 3000)
     } catch (error: any) {
       alert('Erro ao desativar: ' + error.message)
     }
@@ -118,15 +120,15 @@ export default function UsuariosPage() {
     e.preventDefault()
     setErro('')
     setSucesso('')
+    setSalvando(true)
 
     try {
       if (editando) {
-        // Atualizar usuário
+        // Atualizar usuário existente
         const { error } = await supabase
           .from('usuarios')
           .update({
             nome_completo: nomeCompleto,
-            email,
             nivel_hierarquico_id: nivelHierarquicoId,
             tipo_empresa: tipoEmpresa,
             ativo,
@@ -135,46 +137,55 @@ export default function UsuariosPage() {
 
         if (error) throw error
 
-        // Se mudou a senha, atualizar no auth
+        // Se mudou a senha, chamar API route
         if (senha) {
-          const { error: authError } = await supabase.auth.admin.updateUserById(
-            editando.id,
-            { password: senha }
-          )
-          if (authError) throw authError
+          const response = await fetch('/api/admin/update-user-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: editando.id,
+              password: senha,
+            }),
+          })
+
+          if (!response.ok) {
+            const data = await response.json()
+            throw new Error(data.error || 'Erro ao atualizar senha')
+          }
         }
+
+        setSucesso('Usuário atualizado com sucesso!')
       } else {
-        // Criar novo usuário
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-          email,
-          password: senha,
-          email_confirm: true,
-        })
-
-        if (authError) throw authError
-
-        // Criar registro do usuário
-        const { error: userError } = await supabase
-          .from('usuarios')
-          .insert({
-            id: authData.user.id,
-            nome_completo: nomeCompleto,
+        // Criar novo usuário via API route
+        const response = await fetch('/api/admin/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             email,
+            password: senha,
+            nome_completo: nomeCompleto,
             nivel_hierarquico_id: nivelHierarquicoId,
             tipo_empresa: tipoEmpresa,
             ativo,
-          })
+          }),
+        })
 
-        if (userError) throw userError
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || 'Erro ao criar usuário')
+        }
+
+        setSucesso('Usuário criado com sucesso!')
       }
 
       setShowModal(false)
-      setSucesso('Usuário salvo com sucesso!')
       await loadData()
-
       setTimeout(() => setSucesso(''), 3000)
     } catch (error: any) {
+      console.error('Erro completo:', error)
       setErro(error.message)
+    } finally {
+      setSalvando(false)
     }
   }
 
@@ -193,19 +204,30 @@ export default function UsuariosPage() {
       return
     }
 
-    try {
-      const { error } = await supabase.auth.admin.updateUserById(
-        usuarioReset.id,
-        { password: novaSenha }
-      )
+    setSalvando(true)
 
-      if (error) throw error
+    try {
+      const response = await fetch('/api/admin/reset-user-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: usuarioReset.id,
+          password: novaSenha,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Erro ao resetar senha')
+      }
 
       setShowResetModal(false)
       setSucesso(`Senha de ${usuarioReset.nome_completo} resetada com sucesso!`)
       setTimeout(() => setSucesso(''), 5000)
     } catch (error: any) {
       setErro(error.message)
+    } finally {
+      setSalvando(false)
     }
   }
 
@@ -289,6 +311,7 @@ export default function UsuariosPage() {
               <button
                 onClick={() => setShowModal(false)}
                 className="text-gray-400 hover:text-gray-600"
+                disabled={salvando}
               >
                 <X className="w-6 h-6" />
               </button>
@@ -303,6 +326,7 @@ export default function UsuariosPage() {
                   onChange={(e) => setNomeCompleto(e.target.value)}
                   className="input-field"
                   required
+                  disabled={salvando}
                   placeholder="João da Silva"
                 />
               </div>
@@ -315,9 +339,14 @@ export default function UsuariosPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   className="input-field"
                   required
+                  disabled={!!editando || salvando}
                   placeholder="joao@empresa.com"
-                  disabled={!!editando}
                 />
+                {editando && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Email não pode ser alterado
+                  </p>
+                )}
               </div>
 
               <div>
@@ -330,9 +359,13 @@ export default function UsuariosPage() {
                   onChange={(e) => setSenha(e.target.value)}
                   className="input-field"
                   required={!editando}
+                  disabled={salvando}
                   placeholder="••••••••"
                   minLength={6}
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Mínimo de 6 caracteres
+                </p>
               </div>
 
               <div>
@@ -342,11 +375,12 @@ export default function UsuariosPage() {
                   onChange={(e) => setNivelHierarquicoId(e.target.value)}
                   className="input-field"
                   required
+                  disabled={salvando}
                 >
                   <option value="">Selecione...</option>
                   {niveisHierarquicos.map((n) => (
                     <option key={n.id} value={n.id}>
-                      {n.label} (Nível {n.nivel_acesso})
+                      {n.label} (Acesso: {n.nivel_acesso})
                     </option>
                   ))}
                 </select>
@@ -359,6 +393,7 @@ export default function UsuariosPage() {
                   onChange={(e) => setTipoEmpresa(e.target.value as any)}
                   className="input-field"
                   required
+                  disabled={salvando}
                 >
                   <option value="CLIENTE">Cliente</option>
                   <option value="TUNAP">TUNAP</option>
@@ -372,6 +407,7 @@ export default function UsuariosPage() {
                   checked={ativo}
                   onChange={(e) => setAtivo(e.target.checked)}
                   className="w-4 h-4 text-primary-600 rounded"
+                  disabled={salvando}
                 />
                 <label htmlFor="ativo" className="text-sm text-gray-700">
                   Ativo
@@ -390,11 +426,16 @@ export default function UsuariosPage() {
                   type="button"
                   onClick={() => setShowModal(false)}
                   className="btn-secondary flex-1"
+                  disabled={salvando}
                 >
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary flex-1">
-                  {editando ? 'Atualizar' : 'Criar'}
+                <button 
+                  type="submit" 
+                  className="btn-primary flex-1"
+                  disabled={salvando}
+                >
+                  {salvando ? 'Salvando...' : editando ? 'Atualizar' : 'Criar'}
                 </button>
               </div>
             </form>
@@ -413,6 +454,7 @@ export default function UsuariosPage() {
               <button
                 onClick={() => setShowResetModal(false)}
                 className="text-gray-400 hover:text-gray-600"
+                disabled={salvando}
               >
                 <X className="w-6 h-6" />
               </button>
@@ -435,6 +477,7 @@ export default function UsuariosPage() {
                   onChange={(e) => setNovaSenha(e.target.value)}
                   className="input-field"
                   required
+                  disabled={salvando}
                   placeholder="••••••••"
                   minLength={6}
                 />
@@ -451,6 +494,7 @@ export default function UsuariosPage() {
                   onChange={(e) => setConfirmaSenha(e.target.value)}
                   className="input-field"
                   required
+                  disabled={salvando}
                   placeholder="••••••••"
                   minLength={6}
                 />
@@ -468,12 +512,17 @@ export default function UsuariosPage() {
                   type="button"
                   onClick={() => setShowResetModal(false)}
                   className="btn-secondary flex-1"
+                  disabled={salvando}
                 >
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary flex-1 flex items-center justify-center gap-2">
+                <button 
+                  type="submit" 
+                  className="btn-primary flex-1 flex items-center justify-center gap-2"
+                  disabled={salvando}
+                >
                   <Key className="w-4 h-4" />
-                  Resetar Senha
+                  {salvando ? 'Resetando...' : 'Resetar Senha'}
                 </button>
               </div>
             </form>
