@@ -5,7 +5,8 @@ import { useUserStore } from '@/lib/store'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Home, ShoppingCart, BarChart3, LogOut, User, Menu, X } from 'lucide-react'
+import Image from 'next/image'
+import { Home, ShoppingCart, BarChart3, LogOut, User, Menu, X, Settings } from 'lucide-react'
 import { useState } from 'react'
 
 export default function DashboardLayout({
@@ -23,10 +24,19 @@ export default function DashboardLayout({
     router.push('/')
   }
 
+  // Verifica se o usuário é admin (nivel_acesso >= 80)
+  const isAdmin = nivelHierarquico && nivelHierarquico.nivel_acesso >= 80
+
   const menuItems = [
     { icon: Home, label: 'Início', href: '/dashboard' },
-    { icon: ShoppingCart, label: 'Nova Venda', href: '/dashboard/vendas/nova' },
-    { icon: BarChart3, label: 'Relatórios', href: '/dashboard/relatorios' },
+    { 
+      icon: ShoppingCart, 
+      label: 'Agendamento', 
+      subItems: [
+        { icon: ShoppingCart, label: 'Nova Venda', href: '/dashboard/vendas/nova' },
+        { icon: BarChart3, label: 'Relatórios', href: '/dashboard/relatorios' },
+      ]
+    },
   ]
 
   return (
@@ -38,8 +48,14 @@ export default function DashboardLayout({
             {/* Logo */}
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white text-xl font-bold">T</span>
+                <div className="relative w-10 h-10">
+                  <Image
+                    src="/logo-tunap.png"
+                    alt="TUNAP Logo"
+                    width={40}
+                    height={40}
+                    className="rounded-lg"
+                  />
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-primary-600">TUNAP</h1>
@@ -66,17 +82,52 @@ export default function DashboardLayout({
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 p-4 space-y-1">
+            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
               {menuItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  <item.icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
-                </Link>
+                <div key={item.label}>
+                  {item.subItems ? (
+                    <div>
+                      <div className="flex items-center gap-3 px-3 py-2 text-gray-700 font-medium text-sm">
+                        <item.icon className="w-5 h-5" />
+                        <span>{item.label}</span>
+                      </div>
+                      <div className="ml-8 space-y-1">
+                        {item.subItems.map((subItem) => (
+                          <Link
+                            key={subItem.href}
+                            href={subItem.href}
+                            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors"
+                          >
+                            <subItem.icon className="w-4 h-4" />
+                            <span>{subItem.label}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <Link
+                      href={item.href!}
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      <item.icon className="w-5 h-5" />
+                      <span className="font-medium">{item.label}</span>
+                    </Link>
+                  )}
+                </div>
               ))}
+
+              {/* Botão Admin - Apenas se for admin */}
+              {isAdmin && (
+                <div className="pt-2 mt-2 border-t border-gray-200">
+                  <Link
+                    href="/admin"
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-primary-600 hover:bg-primary-50 transition-colors font-medium"
+                  >
+                    <Settings className="w-5 h-5" />
+                    <span>Painel Admin</span>
+                  </Link>
+                </div>
+              )}
             </nav>
 
             {/* Logout */}
@@ -104,8 +155,14 @@ export default function DashboardLayout({
             {/* Logo Mobile */}
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white text-xl font-bold">T</span>
+                <div className="relative w-10 h-10">
+                  <Image
+                    src="/logo-tunap.png"
+                    alt="TUNAP Logo"
+                    width={40}
+                    height={40}
+                    className="rounded-lg"
+                  />
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-primary-600">TUNAP</h1>
@@ -132,18 +189,55 @@ export default function DashboardLayout({
             </div>
 
             {/* Navigation Mobile */}
-            <nav className="flex-1 p-4 space-y-1">
+            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
               {menuItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setSidebarOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  <item.icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
-                </Link>
+                <div key={item.label}>
+                  {item.subItems ? (
+                    <div>
+                      <div className="flex items-center gap-3 px-3 py-2 text-gray-700 font-medium text-sm">
+                        <item.icon className="w-5 h-5" />
+                        <span>{item.label}</span>
+                      </div>
+                      <div className="ml-8 space-y-1">
+                        {item.subItems.map((subItem) => (
+                          <Link
+                            key={subItem.href}
+                            href={subItem.href}
+                            onClick={() => setSidebarOpen(false)}
+                            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors"
+                          >
+                            <subItem.icon className="w-4 h-4" />
+                            <span>{subItem.label}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <Link
+                      href={item.href!}
+                      onClick={() => setSidebarOpen(false)}
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      <item.icon className="w-5 h-5" />
+                      <span className="font-medium">{item.label}</span>
+                    </Link>
+                  )}
+                </div>
               ))}
+
+              {/* Botão Admin Mobile - Apenas se for admin */}
+              {isAdmin && (
+                <div className="pt-2 mt-2 border-t border-gray-200">
+                  <Link
+                    href="/admin"
+                    onClick={() => setSidebarOpen(false)}
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-primary-600 hover:bg-primary-50 transition-colors font-medium"
+                  >
+                    <Settings className="w-5 h-5" />
+                    <span>Painel Admin</span>
+                  </Link>
+                </div>
+              )}
             </nav>
 
             {/* Logout Mobile */}
@@ -172,8 +266,14 @@ export default function DashboardLayout({
           {/* Header Mobile */}
           <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-30">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-                <span className="text-white text-sm font-bold">T</span>
+              <div className="relative w-8 h-8">
+                <Image
+                  src="/logo-tunap.png"
+                  alt="TUNAP Logo"
+                  width={32}
+                  height={32}
+                  className="rounded-lg"
+                />
               </div>
               <h1 className="text-lg font-bold text-gray-900">TUNAP Sync</h1>
             </div>
