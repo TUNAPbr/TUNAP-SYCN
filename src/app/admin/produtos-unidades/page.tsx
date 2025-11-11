@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { DataTable } from '@/components/admin/DataTable'
+import { SearchableSelect } from '@/components/SearchableSelect'
 import { X, AlertCircle, CheckCircle } from 'lucide-react'
 
 export default function ProdutosUnidadesPage() {
@@ -42,7 +43,11 @@ export default function ProdutosUnidadesPage() {
           .order('nome_sintetico'),
         supabase
           .from('unidades')
-          .select('*, grupos (nome)')
+          .select(`
+            *,
+            grupos (nome, conglomerados (nome)),
+            marcas (nome)
+          `)
           .eq('ativo', true)
           .order('nome')
       ])
@@ -151,6 +156,34 @@ export default function ProdutosUnidadesPage() {
     }
   }
 
+  // Preparar options para SearchableSelect
+  const unidadesOptions = unidades.map(u => {
+    const conglomerado = u.grupos?.conglomerados?.nome || ''
+    const grupo = u.grupos?.nome || ''
+    const marca = u.marcas?.nome || ''
+    
+    let label = ''
+    if (conglomerado) label += conglomerado + ' > '
+    if (grupo) label += grupo + ' > '
+    if (marca) label += marca + ' > '
+    label += `${u.nome} - ${formatCNPJ(u.cnpj)}`
+
+    return {
+      value: u.id,
+      label,
+    }
+  })
+
+  const formatCNPJ = (value: string) => {
+    const numbers = value.replace(/\D/g, '')
+    return numbers
+      .replace(/(\d{2})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1/$2')
+      .replace(/(\d{4})(\d)/, '$1-$2')
+      .slice(0, 18)
+  }
+
   const columns = [
     {
       key: 'produtos',
@@ -184,7 +217,7 @@ export default function ProdutosUnidadesPage() {
             {value?.nome || '-'}
           </p>
           <p className="text-xs text-gray-500">
-            CNPJ: {value?.cnpj || '-'}
+            CNPJ: {formatCNPJ(value?.cnpj || '')}
           </p>
         </div>
       ),
@@ -256,22 +289,17 @@ export default function ProdutosUnidadesPage() {
                 )}
               </div>
 
+              {/* SearchableSelect para Unidade */}
               <div>
-                <label className="label">Unidade *</label>
-                <select
+                <SearchableSelect
+                  label="Unidade"
+                  options={unidadesOptions}
                   value={unidadeId}
-                  onChange={(e) => setUnidadeId(e.target.value)}
-                  className="input-field"
+                  onChange={setUnidadeId}
+                  placeholder="Buscar unidade..."
                   required
                   disabled={!!editando}
-                >
-                  <option value="">Selecione...</option>
-                  {unidades.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.grupos?.nome} - {u.nome}
-                    </option>
-                  ))}
-                </select>
+                />
                 {editando && (
                   <p className="text-xs text-gray-500 mt-1">
                     Unidade não pode ser alterada
