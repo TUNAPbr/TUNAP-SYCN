@@ -45,6 +45,7 @@ export default function UsuariosEquipesPage() {
                 nome,
                 grupos (
                   nome,
+                  conglomerado_id,
                   conglomerados (nome)
                 ),
                 marcas (nome)
@@ -62,10 +63,14 @@ export default function UsuariosEquipesPage() {
           .select(`
             *,
             unidades (
+              id,
               nome,
+              grupo_id,
               grupos (
+                id,
                 nome,
-                conglomerados (nome)
+                conglomerado_id,
+                conglomerados (id, nome)
               ),
               marcas (nome)
             )
@@ -99,6 +104,12 @@ export default function UsuariosEquipesPage() {
       setConglomerados(conglomeradosRes.data || [])
       setGrupos(gruposRes.data || [])
       setUnidades(unidadesRes.data || [])
+
+      // Debug
+      console.log('🔍 Debug - Equipes carregadas:', equipesRes.data?.length)
+      if (equipesRes.data && equipesRes.data.length > 0) {
+        console.log('📋 Exemplo de equipe:', equipesRes.data[0])
+      }
     } catch (error: any) {
       console.error('Erro:', error)
       setErro(error.message)
@@ -226,18 +237,85 @@ export default function UsuariosEquipesPage() {
     label: `${u.nome_completo} - ${u.email}`,
   }))
 
-  // Filtrar equipes baseado nos filtros
+  // Options para SearchableSelect dos filtros
+  const conglomeradosOptions = [
+    { value: '', label: 'Todos' },
+    ...conglomerados.map(c => ({ value: c.id, label: c.nome }))
+  ]
+
+  const gruposOptions = [
+    { value: '', label: 'Todos' },
+    ...grupos.map(g => ({ 
+      value: g.id, 
+      label: `${g.nome}${g.conglomerados?.nome ? ` (${g.conglomerados.nome})` : ''}` 
+    }))
+  ]
+
+  const unidadesOptions = [
+    { value: '', label: 'Todas' },
+    ...unidades.map(u => ({ 
+      value: u.id, 
+      label: `${u.nome}${u.grupos?.nome ? ` (${u.grupos.nome})` : ''}` 
+    }))
+  ]
+
+  // Filtrar equipes - CORRIGIDO
   const equipesFiltradasModal = equipes.filter(equipe => {
     const unidade = equipe.unidades
     const grupo = unidade?.grupos
     const conglomerado = grupo?.conglomerados
 
-    if (filtroConglomerado && conglomerado?.id !== filtroConglomerado) return false
-    if (filtroGrupo && grupo?.id !== filtroGrupo) return false
-    if (filtroUnidade && unidade?.id !== filtroUnidade) return false
+    // Debug
+    if (equipe === equipes[0]) {
+      console.log('🔍 Debug primeira equipe:', {
+        equipe: equipe.nome,
+        unidadeId: unidade?.id,
+        grupoId: grupo?.id,
+        conglomeradoId: conglomerado?.id,
+        filtroConglomerado,
+        filtroGrupo,
+        filtroUnidade,
+      })
+    }
+
+    // Filtro de Conglomerado
+    if (filtroConglomerado) {
+      // Usar conglomerado_id do grupo ao invés do objeto nested
+      if (grupo?.conglomerado_id !== filtroConglomerado) {
+        return false
+      }
+    }
+
+    // Filtro de Grupo
+    if (filtroGrupo) {
+      // Usar grupo_id da unidade ao invés do objeto nested
+      if (unidade?.grupo_id !== filtroGrupo) {
+        return false
+      }
+    }
+
+    // Filtro de Unidade
+    if (filtroUnidade) {
+      if (unidade?.id !== filtroUnidade) {
+        return false
+      }
+    }
 
     return true
   })
+
+  // Debug quando modal abrir
+  useEffect(() => {
+    if (showModal) {
+      console.log('📊 Total de equipes:', equipes.length)
+      console.log('📊 Equipes filtradas:', equipesFiltradasModal.length)
+      console.log('🔍 Filtros ativos:', {
+        conglomerado: filtroConglomerado,
+        grupo: filtroGrupo,
+        unidade: filtroUnidade,
+      })
+    }
+  }, [showModal, filtroConglomerado, filtroGrupo, filtroUnidade, equipes])
 
   return (
     <div className="space-y-4">
@@ -311,10 +389,8 @@ export default function UsuariosEquipesPage() {
                         const equipe = vinculo.equipes
                         const unidade = equipe?.unidades
                         const grupo = unidade?.grupos
-                        const conglomerado = grupo?.conglomerados
                         const marca = unidade?.marcas
 
-                        // Montar label: Grupo > Marca > Unidade > Equipe
                         const partes = []
                         if (grupo?.nome) partes.push(grupo.nome)
                         if (marca?.nome) partes.push(marca.nome)
@@ -385,55 +461,33 @@ export default function UsuariosEquipesPage() {
                 required
               />
 
-              {/* Filtros */}
+              {/* Filtros com SearchableSelect */}
               <div className="border-t pt-4">
                 <h3 className="font-semibold text-gray-900 mb-3">Filtros (opcionais)</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="label">Conglomerado</label>
-                    <select
-                      value={filtroConglomerado}
-                      onChange={(e) => setFiltroConglomerado(e.target.value)}
-                      className="input-field"
-                    >
-                      <option value="">Todos</option>
-                      {conglomerados.map(c => (
-                        <option key={c.id} value={c.id}>{c.nome}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <SearchableSelect
+                    label="Conglomerado"
+                    options={conglomeradosOptions}
+                    value={filtroConglomerado}
+                    onChange={setFiltroConglomerado}
+                    placeholder="Todos"
+                  />
 
-                  <div>
-                    <label className="label">Grupo</label>
-                    <select
-                      value={filtroGrupo}
-                      onChange={(e) => setFiltroGrupo(e.target.value)}
-                      className="input-field"
-                    >
-                      <option value="">Todos</option>
-                      {grupos.map(g => (
-                        <option key={g.id} value={g.id}>
-                          {g.nome} {g.conglomerados?.nome && `(${g.conglomerados.nome})`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <SearchableSelect
+                    label="Grupo"
+                    options={gruposOptions}
+                    value={filtroGrupo}
+                    onChange={setFiltroGrupo}
+                    placeholder="Todos"
+                  />
 
-                  <div>
-                    <label className="label">Unidade</label>
-                    <select
-                      value={filtroUnidade}
-                      onChange={(e) => setFiltroUnidade(e.target.value)}
-                      className="input-field"
-                    >
-                      <option value="">Todas</option>
-                      {unidades.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {u.nome} {u.grupos?.nome && `(${u.grupos.nome})`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <SearchableSelect
+                    label="Unidade"
+                    options={unidadesOptions}
+                    value={filtroUnidade}
+                    onChange={setFiltroUnidade}
+                    placeholder="Todas"
+                  />
                 </div>
               </div>
 
@@ -449,7 +503,6 @@ export default function UsuariosEquipesPage() {
                     equipesFiltradasModal.map((equipe) => {
                       const unidade = equipe.unidades
                       const grupo = unidade?.grupos
-                      const conglomerado = grupo?.conglomerados
                       const marca = unidade?.marcas
 
                       const partes = []
