@@ -60,9 +60,13 @@ export default function LoginPage() {
           <div className="text-center mb-8">
             {/* Logo TUNAP */}
             <div className="mb-6 flex justify-center">
-              <div className="w-32 h-32 bg-primary-600 rounded-2xl flex items-center justify-center">
-                <span className="text-white text-5xl font-bold">T</span>
-              </div>
+              <Image 
+                src="/logo-tunap.png" 
+                alt="TUNAP Logo" 
+                width={40} 
+                height={40}
+                className="rounded-lg"
+              />
             </div>
             
             <h1 className="text-3xl font-bold text-gray-900">TUNAP Sync</h1>
