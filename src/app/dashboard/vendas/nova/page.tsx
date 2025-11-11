@@ -3,9 +3,18 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUserStore } from '@/lib/store'
-import { supabase, Produto, Unidade, Equipe } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { Plus, Trash2, Save, ArrowLeft, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
+
+interface ProdutoDisponivel {
+  id: string
+  referencia: string
+  nome: string
+  nome_sintetico: string
+  numero: string
+  referencia_local: string | null
+}
 
 interface ItemVenda {
   produto_id: string
@@ -17,79 +26,85 @@ interface ItemVenda {
 
 export default function NovaVendaPage() {
   const router = useRouter()
-  const { user, equipes } = useUserStore()
+  const { user } = useUserStore()
 
   // Estados do formulário
   const [dataVenda, setDataVenda] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [numeroIdentificacao, setNumeroIdentificacao] = useState('')
   const [unidadeSelecionada, setUnidadeSelecionada] = useState('')
-  const [equipeSelecionada, setEquipeSelecionada] = useState('')
   const [observacoes, setObservacoes] = useState('')
   const [itens, setItens] = useState<ItemVenda[]>([])
 
   // Estados auxiliares
-  const [unidades, setUnidades] = useState<Unidade[]>([])
-  const [equipesDisponiveis, setEquipesDisponiveis] = useState<Equipe[]>([])
-  const [produtos, setProdutos] = useState<Produto[]>([])
+  const [unidades, setUnidades] = useState<any[]>([])
+  const [produtos, setProdutos] = useState<ProdutoDisponivel[]>([])
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState(false)
 
-  // Carregar unidades disponíveis
+  // Carregar unidades do usuário
   useEffect(() => {
     loadUnidades()
-  }, [equipes])
+  }, [user])
 
-  // Carregar equipes quando unidade mudar
+  // Carregar produtos quando unidade mudar
   useEffect(() => {
     if (unidadeSelecionada) {
-      loadEquipes()
       loadProdutos()
+    } else {
+      setProdutos([])
     }
   }, [unidadeSelecionada])
 
   const loadUnidades = async () => {
-    if (!equipes || equipes.length === 0) return
+    if (!user) return
 
     try {
-      // Buscar unidades das equipes do usuário
-      const unidadeIds = Array.from(new Set(equipes.map((e) => e.unidade_id)))
-      
-      const { data, error } = await supabase
+      // Buscar equipes do usuário
+      const { data: equipesData, error: equipesError } = await supabase
+        .from('usuario_equipes')
+        .select('equipe_id')
+        .eq('usuario_id', user.id)
+
+      if (equipesError) throw equipesError
+      if (!equipesData || equipesData.length === 0) {
+        setErro('Você não está associado a nenhuma equipe')
+        return
+      }
+
+      const equipeIds = equipesData.map((e) => e.equipe_id)
+
+      // Buscar unidades dessas equipes
+      const { data: equipesCompletas, error: equipesCompletasError } = await supabase
+        .from('equipes')
+        .select('unidade_id')
+        .in('id', equipeIds)
+
+      if (equipesCompletasError) throw equipesCompletasError
+
+      const unidadeIds = Array.from(new Set(equipesCompletas?.map((e) => e.unidade_id) || []))
+
+      // Buscar dados das unidades
+      const { data: unidadesData, error: unidadesError } = await supabase
         .from('unidades')
         .select('*')
         .in('id', unidadeIds)
         .eq('ativo', true)
+        .order('nome')
 
-      if (error) throw error
-      
-      if (data) {
-        setUnidades(data)
-        if (data.length === 1) {
-          setUnidadeSelecionada(data[0].id)
+      if (unidadesError) throw unidadesError
+
+      if (unidadesData) {
+        setUnidades(unidadesData)
+        
+        // Se tiver apenas 1 unidade, seleciona automaticamente
+        if (unidadesData.length === 1) {
+          setUnidadeSelecionada(unidadesData[0].id)
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao carregar unidades:', error)
-    }
-  }
-
-  const loadEquipes = async () => {
-    if (!unidadeSelecionada) return
-
-    try {
-      // Filtrar equipes do usuário para a unidade selecionada
-      const equipesUnidade = equipes.filter(
-        (e) => e.unidade_id === unidadeSelecionada
-      )
-      
-      setEquipesDisponiveis(equipesUnidade)
-      
-      if (equipesUnidade.length === 1) {
-        setEquipeSelecionada(equipesUnidade[0].id)
-      }
-    } catch (error) {
-      console.error('Erro ao carregar equipes:', error)
+      setErro('Erro ao carregar unidades: ' + error.message)
     }
   }
 
@@ -97,17 +112,41 @@ export default function NovaVendaPage() {
     if (!unidadeSelecionada) return
 
     try {
+      // Buscar produtos da unidade via produtos_unidades
       const { data, error } = await supabase
-        .from('produtos')
-        .select('*')
+        .from('produtos_unidades')
+        .select(`
+          produto_id,
+          referencia_local,
+          produtos (
+            id,
+            referencia,
+            nome,
+            nome_sintetico,
+            numero
+          )
+        `)
         .eq('unidade_id', unidadeSelecionada)
-        .eq('ativo', true)
-        .order('nome')
 
       if (error) throw error
-      if (data) setProdutos(data)
-    } catch (error) {
+
+      if (data) {
+        const produtosFormatados = data
+          .filter((item: any) => item.produtos)
+          .map((item: any) => ({
+            id: item.produtos.id,
+            referencia: item.produtos.referencia,
+            nome: item.produtos.nome,
+            nome_sintetico: item.produtos.nome_sintetico,
+            numero: item.produtos.numero,
+            referencia_local: item.referencia_local,
+          }))
+
+        setProdutos(produtosFormatados)
+      }
+    } catch (error: any) {
       console.error('Erro ao carregar produtos:', error)
+      setErro('Erro ao carregar produtos: ' + error.message)
     }
   }
 
@@ -136,7 +175,6 @@ export default function NovaVendaPage() {
       if (produto) {
         novosItens[index].produto_id = valor
         novosItens[index].produto_nome = produto.nome
-        novosItens[index].preco_unitario = Number(produto.preco_base)
       }
     } else {
       novosItens[index][campo] = valor as never
@@ -169,11 +207,6 @@ export default function NovaVendaPage() {
       return false
     }
 
-    if (!equipeSelecionada) {
-      setErro('Selecione uma equipe')
-      return false
-    }
-
     if (itens.length === 0) {
       setErro('Adicione pelo menos um produto')
       return false
@@ -186,6 +219,10 @@ export default function NovaVendaPage() {
       }
       if (item.quantidade <= 0) {
         setErro('Quantidade deve ser maior que zero')
+        return false
+      }
+      if (item.preco_unitario <= 0) {
+        setErro('Preço unitário deve ser maior que zero')
         return false
       }
     }
@@ -210,7 +247,6 @@ export default function NovaVendaPage() {
         .insert({
           usuario_id: user.id,
           unidade_id: unidadeSelecionada,
-          equipe_id: equipeSelecionada,
           data_venda: dataVenda,
           numero_identificacao: numeroIdentificacao,
           valor_total: valorTotal,
@@ -306,55 +342,35 @@ export default function NovaVendaPage() {
 
             {/* Número de Identificação */}
             <div>
-              <label className="label">Número OS / NF *</label>
+              <label className="label">Número NF / OS / OSW *</label>
               <input
                 type="text"
                 value={numeroIdentificacao}
                 onChange={(e) => setNumeroIdentificacao(e.target.value)}
                 className="input-field"
-                placeholder="Ex: OS-12345"
+                placeholder="Ex: NF-12345 ou OS-67890"
                 required
                 disabled={loading}
               />
             </div>
 
             {/* Unidade */}
-            <div>
+            <div className="md:col-span-2">
               <label className="label">Unidade *</label>
               <select
                 value={unidadeSelecionada}
                 onChange={(e) => {
                   setUnidadeSelecionada(e.target.value)
-                  setEquipeSelecionada('')
-                  setItens([])
+                  setItens([]) // Limpa produtos ao trocar unidade
                 }}
                 className="input-field"
                 required
                 disabled={loading || unidades.length === 1}
               >
-                <option value="">Selecione...</option>
+                <option value="">Selecione a unidade...</option>
                 {unidades.map((unidade) => (
                   <option key={unidade.id} value={unidade.id}>
-                    {unidade.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Equipe */}
-            <div>
-              <label className="label">Equipe *</label>
-              <select
-                value={equipeSelecionada}
-                onChange={(e) => setEquipeSelecionada(e.target.value)}
-                className="input-field"
-                required
-                disabled={loading || !unidadeSelecionada || equipesDisponiveis.length === 1}
-              >
-                <option value="">Selecione...</option>
-                {equipesDisponiveis.map((equipe) => (
-                  <option key={equipe.id} value={equipe.id}>
-                    {equipe.nome}
+                    {unidade.nome} - {unidade.cnpj}
                   </option>
                 ))}
               </select>
@@ -382,7 +398,7 @@ export default function NovaVendaPage() {
             <button
               type="button"
               onClick={adicionarItem}
-              disabled={!unidadeSelecionada || loading}
+              disabled={!unidadeSelecionada || loading || produtos.length === 0}
               className="btn-primary flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
@@ -390,7 +406,15 @@ export default function NovaVendaPage() {
             </button>
           </div>
 
-          {itens.length === 0 ? (
+          {!unidadeSelecionada ? (
+            <div className="text-center py-8 text-gray-500">
+              Selecione uma unidade primeiro para ver os produtos disponíveis.
+            </div>
+          ) : produtos.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              Nenhum produto cadastrado para esta unidade.
+            </div>
+          ) : itens.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               Nenhum produto adicionado ainda.
               <br />
@@ -418,7 +442,7 @@ export default function NovaVendaPage() {
                       <option value="">Selecione...</option>
                       {produtos.map((produto) => (
                         <option key={produto.id} value={produto.id}>
-                          {produto.nome} - R$ {Number(produto.preco_base).toFixed(2)}
+                          {produto.nome_sintetico} - {produto.numero}
                         </option>
                       ))}
                     </select>
@@ -446,12 +470,13 @@ export default function NovaVendaPage() {
                     <input
                       type="number"
                       step="0.01"
-                      min="0"
+                      min="0.01"
                       value={item.preco_unitario}
                       onChange={(e) =>
                         atualizarItem(index, 'preco_unitario', Number(e.target.value))
                       }
                       className="input-field"
+                      placeholder="0,00"
                       required
                       disabled={loading}
                     />
