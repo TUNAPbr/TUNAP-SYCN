@@ -27,11 +27,21 @@ export default function LoginPage() {
       if (authError) throw authError
 
       if (authData.user) {
+        // ========================================
+        // CORRIGIDO: Usar cargos ao invés de niveis_hierarquicos
+        // ========================================
         const { data: userData, error: userError } = await supabase
           .from('usuarios')
           .select(`
             *,
-            niveis_hierarquicos (*)
+            cargos (
+              id,
+              nome,
+              escopo,
+              nivel_acesso,
+              categoria,
+              cor
+            )
           `)
           .eq('id', authData.user.id)
           .single()
