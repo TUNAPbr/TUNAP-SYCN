@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { DataTable } from '@/components/admin/DataTable'
 import { X, AlertCircle, Key, CheckCircle } from 'lucide-react'
+import FormularioUsuario from '@/components/admin/FormularioUsuario'
 
 export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<any[]>([])
@@ -16,23 +17,8 @@ export default function UsuariosPage() {
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
   const [salvando, setSalvando] = useState(false)
-  const [mostrarForm, setMostrarForm] = useState(false);
-  const [usuarioEditando, setUsuarioEditando] = useState<string | undefined>();
-
-  const handleNovoUsuario = () => {
-    setUsuarioEditando(undefined);
-    setMostrarForm(true);
-  };
-
-  const handleEditarUsuario = (id: string) => {
-    setUsuarioEditando(id);
-    setMostrarForm(true);
-  };
-
-  const handleSuccess = () => {
-    setMostrarForm(false);
-    // Recarregar lista de usuários
-  };
+  const [mostrarForm, setMostrarForm] = useState(false)
+  const [usuarioEditando, setUsuarioEditando] = useState<string | undefined>()
 
   // Form states
   const [nomeCompleto, setNomeCompleto] = useState('')
@@ -79,6 +65,21 @@ export default function UsuariosPage() {
     }
   }
 
+  const handleNovoUsuario = () => {
+    setUsuarioEditando(undefined)
+    setMostrarForm(true)
+  }
+
+  const handleEditarUsuario = (id: string) => {
+    setUsuarioEditando(id)
+    setMostrarForm(true)
+  }
+
+  const handleSuccess = () => {
+    setMostrarForm(false)
+    loadData() // Recarregar lista de usuários
+  }
+
   const handleAdd = () => {
     setEditando(null)
     setNomeCompleto('')
@@ -103,23 +104,6 @@ export default function UsuariosPage() {
     setErro('')
     setSucesso('')
     setShowModal(true)
-  }
-  return (
-    <div className="p-6">
-      {mostrarForm ? (
-        <FormularioUsuario
-          usuarioId={usuarioEditando}
-          onSuccess={handleSuccess}
-          onCancel={() => setMostrarForm(false)}
-        />
-      ) : (
-        <div>
-          <button onClick={handleNovoUsuario}>Novo Usuário</button>
-          {/* Sua lista de usuários */}
-        </div>
-       )}
-      </div>
-    )  // 
   }
 
   const handleDelete = async (row: any) => {
@@ -255,10 +239,11 @@ export default function UsuariosPage() {
         throw new Error(data.error || 'Erro ao resetar senha')
       }
 
+      setSucesso('Senha resetada com sucesso!')
       setShowResetModal(false)
-      setSucesso(`Senha de ${usuarioReset.nome_completo} resetada com sucesso!`)
-      setTimeout(() => setSucesso(''), 5000)
+      setTimeout(() => setSucesso(''), 3000)
     } catch (error: any) {
+      console.error('Erro:', error)
       setErro(error.message)
     } finally {
       setSalvando(false)
@@ -266,49 +251,63 @@ export default function UsuariosPage() {
   }
 
   const columns = [
+    { key: 'nome_completo', label: 'Nome' },
+    { key: 'email', label: 'Email' },
     {
-      key: 'nome_completo',
-      label: 'Nome',
-    },
-    {
-      key: 'email',
-      label: 'Email',
-    },
-    {
-      key: 'niveis_hierarquicos',
+      key: 'nivel_hierarquico',
       label: 'Nível',
-      render: (value: any) => value?.label || '-',
+      render: (row: any) => row.niveis_hierarquicos?.label || '-',
     },
     {
       key: 'tipo_empresa',
       label: 'Tipo',
-      render: (value: string) => (
-        <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
-          {value}
+      render: (row: any) => (
+        <span
+          className={`px-2 py-1 rounded text-xs font-medium ${
+            row.tipo_empresa === 'TUNAP'
+              ? 'bg-purple-100 text-purple-700'
+              : 'bg-blue-100 text-blue-700'
+          }`}
+        >
+          {row.tipo_empresa}
         </span>
       ),
     },
     {
       key: 'ativo',
       label: 'Status',
-      render: (value: boolean) => (
+      render: (row: any) => (
         <span
           className={`px-2 py-1 rounded text-xs font-medium ${
-            value
+            row.ativo
               ? 'bg-green-100 text-green-700'
               : 'bg-red-100 text-red-700'
           }`}
         >
-          {value ? 'Ativo' : 'Inativo'}
+          {row.ativo ? 'Ativo' : 'Inativo'}
         </span>
       ),
     },
   ]
 
+  // Se estiver mostrando o formulário novo
+  if (mostrarForm) {
+    return (
+      <div className="p-6">
+        <FormularioUsuario
+          usuarioId={usuarioEditando}
+          onSuccess={handleSuccess}
+          onCancel={() => setMostrarForm(false)}
+        />
+      </div>
+    )
+  }
+
   return (
     <>
+      {/* Mensagem de Sucesso */}
       {sucesso && (
-        <div className="mb-4 flex items-center gap-2 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 shadow-lg">
           <CheckCircle className="w-5 h-5" />
           <span>{sucesso}</span>
         </div>
