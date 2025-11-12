@@ -16,6 +16,23 @@ export default function UsuariosPage() {
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [usuarioEditando, setUsuarioEditando] = useState<string | undefined>();
+
+  const handleNovoUsuario = () => {
+    setUsuarioEditando(undefined);
+    setMostrarForm(true);
+  };
+
+  const handleEditarUsuario = (id: string) => {
+    setUsuarioEditando(id);
+    setMostrarForm(true);
+  };
+
+  const handleSuccess = () => {
+    setMostrarForm(false);
+    // Recarregar lista de usuários
+  };
 
   // Form states
   const [nomeCompleto, setNomeCompleto] = useState('')
@@ -87,6 +104,21 @@ export default function UsuariosPage() {
     setSucesso('')
     setShowModal(true)
   }
+  return (
+    <div className="p-6">
+      {mostrarForm ? (
+        <FormularioUsuario
+          usuarioId={usuarioEditando}
+          onSuccess={handleSuccess}
+          onCancel={() => setMostrarForm(false)}
+        />
+      ) : (
+        <div>
+          <button onClick={handleNovoUsuario}>Novo Usuário</button>
+          {/* Sua lista de usuários */}
+        </div>
+      )}
+    </div>
 
   const handleDelete = async (row: any) => {
     if (!confirm(`Deseja realmente desativar "${row.nome_completo}"?`)) return
