@@ -120,14 +120,16 @@ export default function NovaVendaPage() {
     setItens(itens.filter((_, i) => i !== index))
   }
 
-  const atualizarItem = (index: number, field: keyof ItemVenda, value: any) => {
+  const atualizarItem = (index: number, field: keyof ItemVenda, value: string | number) => {
     const novosItens = [...itens]
-    if (field === 'produto_id') {
+    if (field === 'produto_id' && typeof value === 'string') {
       const produto = produtos.find((p) => p.value === value)
       novosItens[index].produto_id = value
       novosItens[index].produto_nome = produto?.label || ''
-    } else {
-      novosItens[index][field] = value
+    } else if (field === 'quantidade' && typeof value === 'number') {
+      novosItens[index].quantidade = value
+    } else if (field === 'produto_nome' && typeof value === 'string') {
+      novosItens[index].produto_nome = value
     }
     setItens(novosItens)
   }
