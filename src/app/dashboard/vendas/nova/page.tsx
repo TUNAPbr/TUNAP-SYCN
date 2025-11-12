@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { Plus, Trash2, Save, ArrowLeft, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
+import { useEquipesUsuario } from '@/hooks/usePermissoes';
+import { useAuth } from '@/hooks/useAuth';
 
 interface UnidadeFormatada {
   value: string
@@ -41,6 +43,196 @@ export default function NovaVendaPage() {
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState(false)
+
+  const { user } = useAuth();
+  const { equipes, loading: loadingEquipes } = useEquipesUsuario(user?.id);
+
+  const [formData, setFormData] = useState({
+    equipe_id: '',
+    data_venda: new Date().toISOString().split('T')[0],
+    numero_identificacao: '',
+    valor_total: '',
+    observacoes: '',
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      // Validar que a equipe selecionada é permitida
+      const equipeSelecionada = equipes.find(eq => eq.id === formData.equipe_id);
+      if (!equipeSelecionada) {
+        throw new Error('Equipe não permitida para este usuário');
+      }
+
+      const { error: insertError } = await supabase
+        .from('vendas')
+        .insert({
+          usuario_id: user?.id,
+          equipe_id: formData.equipe_id,
+          unidade_id: equipeSelecionada.unidade_id,
+          data_venda: formData.data_venda,
+          numero_identificacao: formData.numero_identificacao,
+          valor_total: parseFloat(formData.valor_total),
+          observacoes: formData.observacoes || null,
+        });
+
+      if (insertError) throw insertError;
+
+      setSuccess(true);
+      // Limpar formulário
+      setFormData({
+        equipe_id: '',
+        data_venda: new Date().toISOString().split('T')[0],
+        numero_identificacao: '',
+        valor_total: '',
+        observacoes: '',
+      });
+
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: any) {
+      console.error('Erro ao criar venda:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loadingEquipes) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // Se usuário não tem equipes permitidas
+  if (equipes.length === 0) {
+    return (
+      <div className="p-6">
+        <div className="bg-yellow-50 text-yellow-800 p-4 rounded">
+          <p className="font-medium">Sem permissão para criar vendas</p>
+          <p className="text-sm mt-1">
+            Você não possui equipes vinculadas. Entre em contato com o administrador.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 max-w-2xl mx-auto">
+      <div className="bg-white rounded-lg shadow p-6">
+        <h1 className="text-2xl font-bold mb-6">Nova Venda</h1>
+
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 text-red-600 rounded">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-4 p-4 bg-green-50 text-green-600 rounded">
+            Venda criada com sucesso!
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Equipe *</label>
+            <select
+              required
+              value={formData.equipe_id}
+              onChange={e => setFormData(prev => ({ ...prev, equipe_id: e.target.value }))}
+              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Selecione uma equipe</option>
+              {equipes.map(equipe => (
+                <option key={equipe.id} value={equipe.id}>
+                  {equipe.nome}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Mostrando apenas equipes que você tem permissão
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Data da Venda *</label>
+            <input
+              type="date"
+              required
+              value={formData.data_venda}
+              onChange={e => setFormData(prev => ({ ...prev, data_venda: e.target.value }))}
+              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Número de Identificação *</label>
+            <input
+              type="text"
+              required
+              value={formData.numero_identificacao}
+              onChange={e => setFormData(prev => ({ ...prev, numero_identificacao: e.target.value }))}
+              placeholder="Ex: OS-12345"
+              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Valor Total *</label>
+            <input
+              type="number"
+              required
+              step="0.01"
+              min="0"
+              value={formData.valor_total}
+              onChange={e => setFormData(prev => ({ ...prev, valor_total: e.target.value }))}
+              placeholder="0.00"
+              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Observações</label>
+            <textarea
+              value={formData.observacoes}
+              onChange={e => setFormData(prev => ({ ...prev, observacoes: e.target.value }))}
+              rows={4}
+              placeholder="Informações adicionais..."
+              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="flex gap-3 justify-end pt-4 border-t">
+            <button
+              type="button"
+              onClick={() => window.history.back()}
+              className="px-4 py-2 border rounded hover:bg-gray-50"
+              disabled={loading}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              disabled={loading}
+            >
+              {loading ? 'Salvando...' : 'Criar Venda'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
 
   useEffect(() => {
     loadUnidades()
