@@ -145,9 +145,10 @@ export default function RelatoriosPage() {
           <p>Grupos: {usuario.grupos?.map(g => g.nome).join(', ') || 'N/A'}</p>
           <p>Vendas visíveis: {vendas.length}</p>
         </div>
-      )}
-    </div>
-
+        )}
+      </div>
+    )  
+  }
   const loadVendas = async () => {
     if (!user) return
 
