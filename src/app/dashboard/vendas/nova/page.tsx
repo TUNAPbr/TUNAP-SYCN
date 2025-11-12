@@ -233,10 +233,23 @@ export default function NovaVendaPage() {
         </form>
       </div>
     </div>
+  )  // <-- Adicionar fechamento
+}
+
+// useEffect deve estar DENTRO do componente, não fora
+export default function NovaVendaPage() {
+  // ... estados
 
   useEffect(() => {
     loadUnidades()
   }, [user])
+
+  return (
+    <div>
+      {/* JSX */}
+    </div>
+  )
+}
 
   useEffect(() => {
     if (unidadeSelecionada) {
