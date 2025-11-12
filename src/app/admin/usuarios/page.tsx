@@ -3,63 +3,34 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { DataTable } from '@/components/admin/DataTable'
-import { X, AlertCircle, Key, CheckCircle } from 'lucide-react'
+import { Key, CheckCircle } from 'lucide-react'
 import FormularioUsuario from '@/components/admin/FormularioUsuario'
+import ResetSenhaModal from '@/components/admin/ResetSenhaModal'
 
 export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<any[]>([])
-  const [niveisHierarquicos, setNiveisHierarquicos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
   const [usuarioReset, setUsuarioReset] = useState<any>(null)
-  const [editando, setEditando] = useState<any>(null)
-  const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
-  const [salvando, setSalvando] = useState(false)
   const [mostrarForm, setMostrarForm] = useState(false)
   const [usuarioEditando, setUsuarioEditando] = useState<string | undefined>()
 
-  // Form states
-  const [nomeCompleto, setNomeCompleto] = useState('')
-  const [email, setEmail] = useState('')
-  const [senha, setSenha] = useState('')
-  const [nivelHierarquicoId, setNivelHierarquicoId] = useState('')
-  const [tipoEmpresa, setTipoEmpresa] = useState<'CLIENTE' | 'TUNAP'>('CLIENTE')
-  const [ativo, setAtivo] = useState(true)
-
-  // Reset senha states
-  const [novaSenha, setNovaSenha] = useState('')
-  const [confirmaSenha, setConfirmaSenha] = useState('')
-
   useEffect(() => {
-    loadData()
+    loadUsuarios()
   }, [])
 
-  const loadData = async () => {
+  const loadUsuarios = async () => {
     try {
-      const [usuariosRes, niveisRes] = await Promise.all([
-        supabase
-          .from('usuarios')
-          .select(`
-            *,
-            niveis_hierarquicos (nome, label)
-          `)
-          .order('nome_completo'),
-        supabase
-          .from('niveis_hierarquicos')
-          .select('*')
-          .order('nivel_acesso', { ascending: false })
-      ])
+      const { data, error } = await supabase
+        .from('vw_usuarios_completo')
+        .select('*')
+        .order('nome_completo')
 
-      if (usuariosRes.error) throw usuariosRes.error
-      if (niveisRes.error) throw niveisRes.error
-
-      setUsuarios(usuariosRes.data || [])
-      setNiveisHierarquicos(niveisRes.data || [])
+      if (error) throw error
+      setUsuarios(data || [])
     } catch (error: any) {
       console.error('Erro:', error)
-      setErro(error.message)
     } finally {
       setLoading(false)
     }
@@ -70,43 +41,12 @@ export default function UsuariosPage() {
     setMostrarForm(true)
   }
 
-  const handleEditarUsuario = (id: string) => {
-    setUsuarioEditando(id)
+  const handleEditarUsuario = (row: any) => {
+    setUsuarioEditando(row.id)
     setMostrarForm(true)
   }
 
-  const handleSuccess = () => {
-    setMostrarForm(false)
-    loadData() // Recarregar lista de usuários
-  }
-
-  const handleAdd = () => {
-    setEditando(null)
-    setNomeCompleto('')
-    setEmail('')
-    setSenha('')
-    setNivelHierarquicoId('')
-    setTipoEmpresa('CLIENTE')
-    setAtivo(true)
-    setErro('')
-    setSucesso('')
-    setShowModal(true)
-  }
-
-  const handleEdit = (row: any) => {
-    setEditando(row)
-    setNomeCompleto(row.nome_completo)
-    setEmail(row.email)
-    setSenha('')
-    setNivelHierarquicoId(row.nivel_hierarquico_id)
-    setTipoEmpresa(row.tipo_empresa)
-    setAtivo(row.ativo)
-    setErro('')
-    setSucesso('')
-    setShowModal(true)
-  }
-
-  const handleDelete = async (row: any) => {
+  const handleDesativar = async (row: any) => {
     if (!confirm(`Deseja realmente desativar "${row.nome_completo}"?`)) return
 
     try {
@@ -117,8 +57,8 @@ export default function UsuariosPage() {
 
       if (error) throw error
 
-      await loadData()
       setSucesso('Usuário desativado com sucesso!')
+      await loadUsuarios()
       setTimeout(() => setSucesso(''), 3000)
     } catch (error: any) {
       alert('Erro ao desativar: ' + error.message)
@@ -127,179 +67,86 @@ export default function UsuariosPage() {
 
   const handleResetPassword = (row: any) => {
     setUsuarioReset(row)
-    setNovaSenha('')
-    setConfirmaSenha('')
-    setErro('')
-    setSucesso('')
     setShowResetModal(true)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setErro('')
-    setSucesso('')
-    setSalvando(true)
-
-    try {
-      if (editando) {
-        // Atualizar usuário existente
-        const { error } = await supabase
-          .from('usuarios')
-          .update({
-            nome_completo: nomeCompleto,
-            nivel_hierarquico_id: nivelHierarquicoId,
-            tipo_empresa: tipoEmpresa,
-            ativo,
-          })
-          .eq('id', editando.id)
-
-        if (error) throw error
-
-        // Se mudou a senha, chamar API route
-        if (senha) {
-          const response = await fetch('/api/admin/update-user-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: editando.id,
-              password: senha,
-            }),
-          })
-
-          if (!response.ok) {
-            const data = await response.json()
-            throw new Error(data.error || 'Erro ao atualizar senha')
-          }
-        }
-
-        setSucesso('Usuário atualizado com sucesso!')
-      } else {
-        // Criar novo usuário via API route
-        const response = await fetch('/api/admin/create-user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email,
-            password: senha,
-            nome_completo: nomeCompleto,
-            nivel_hierarquico_id: nivelHierarquicoId,
-            tipo_empresa: tipoEmpresa,
-            ativo,
-          }),
-        })
-
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || 'Erro ao criar usuário')
-        }
-
-        setSucesso('Usuário criado com sucesso!')
-      }
-
-      setShowModal(false)
-      await loadData()
-      setTimeout(() => setSucesso(''), 3000)
-    } catch (error: any) {
-      console.error('Erro completo:', error)
-      setErro(error.message)
-    } finally {
-      setSalvando(false)
-    }
-  }
-
-  const handleSubmitReset = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setErro('')
-    setSucesso('')
-
-    if (novaSenha !== confirmaSenha) {
-      setErro('As senhas não coincidem')
-      return
-    }
-
-    if (novaSenha.length < 6) {
-      setErro('A senha deve ter no mínimo 6 caracteres')
-      return
-    }
-
-    setSalvando(true)
-
-    try {
-      const response = await fetch('/api/admin/reset-user-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: usuarioReset.id,
-          password: novaSenha,
-        }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Erro ao resetar senha')
-      }
-
-      setSucesso('Senha resetada com sucesso!')
-      setShowResetModal(false)
-      setTimeout(() => setSucesso(''), 3000)
-    } catch (error: any) {
-      console.error('Erro:', error)
-      setErro(error.message)
-    } finally {
-      setSalvando(false)
-    }
+  const handleSuccess = () => {
+    setMostrarForm(false)
+    setSucesso('Operação realizada com sucesso!')
+    loadUsuarios()
+    setTimeout(() => setSucesso(''), 3000)
   }
 
   const columns = [
-    { key: 'nome_completo', label: 'Nome' },
-    { key: 'email', label: 'Email' },
+    { 
+      key: 'nome_completo', 
+      label: 'Nome' 
+    },
+    { 
+      key: 'email', 
+      label: 'Email' 
+    },
     {
-      key: 'nivel_hierarquico',
+      key: 'cargo_exibicao',
+      label: 'Função',
+      render: (value: string, row: any) => (
+        <div>
+          <span className="font-medium text-gray-900">{value}</span>
+          {row.cargo_exibicao !== row.cargo_nome && (
+            <p className="text-xs text-gray-500">({row.cargo_nome})</p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'cargo_escopo',
       label: 'Nível',
-      render: (row: any) => row.niveis_hierarquicos?.label || '-',
+      render: (value: string) => (
+        <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
+          {value}
+        </span>
+      ),
     },
     {
       key: 'tipo_empresa',
       label: 'Tipo',
-      render: (row: any) => (
+      render: (value: string) => (
         <span
           className={`px-2 py-1 rounded text-xs font-medium ${
-            row.tipo_empresa === 'TUNAP'
+            value === 'TUNAP'
               ? 'bg-purple-100 text-purple-700'
               : 'bg-blue-100 text-blue-700'
           }`}
         >
-          {row.tipo_empresa}
+          {value}
         </span>
       ),
     },
     {
       key: 'ativo',
       label: 'Status',
-      render: (row: any) => (
+      render: (value: boolean) => (
         <span
           className={`px-2 py-1 rounded text-xs font-medium ${
-            row.ativo
+            value
               ? 'bg-green-100 text-green-700'
               : 'bg-red-100 text-red-700'
           }`}
         >
-          {row.ativo ? 'Ativo' : 'Inativo'}
+          {value ? 'Ativo' : 'Inativo'}
         </span>
       ),
     },
   ]
 
-  // Se estiver mostrando o formulário novo
+  // Se estiver mostrando o formulário
   if (mostrarForm) {
     return (
-      <div className="p-6">
-        <FormularioUsuario
-          usuarioId={usuarioEditando}
-          onSuccess={handleSuccess}
-          onCancel={() => setMostrarForm(false)}
-        />
-      </div>
+      <FormularioUsuario
+        usuarioId={usuarioEditando}
+        onSuccess={handleSuccess}
+        onCancel={() => setMostrarForm(false)}
+      />
     )
   }
 
@@ -317,9 +164,9 @@ export default function UsuariosPage() {
         title="Usuários"
         columns={columns}
         data={usuarios}
-        onAdd={handleAdd}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
+        onAdd={handleNovoUsuario}
+        onEdit={handleEditarUsuario}
+        onDelete={handleDesativar}
         searchPlaceholder="Buscar usuário..."
         loading={loading}
         customActions={(row) => (
@@ -333,234 +180,17 @@ export default function UsuariosPage() {
         )}
       />
 
-      {/* Modal Criar/Editar */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 my-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">
-                {editando ? 'Editar' : 'Novo'} Usuário
-              </h2>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-                disabled={salvando}
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="label">Nome Completo *</label>
-                <input
-                  type="text"
-                  value={nomeCompleto}
-                  onChange={(e) => setNomeCompleto(e.target.value)}
-                  className="input-field"
-                  required
-                  disabled={salvando}
-                  placeholder="João da Silva"
-                />
-              </div>
-
-              <div>
-                <label className="label">Email *</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="input-field"
-                  required
-                  disabled={!!editando || salvando}
-                  placeholder="joao@empresa.com"
-                />
-                {editando && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Email não pode ser alterado
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="label">
-                  Senha {editando ? '(deixe em branco para manter)' : '*'}
-                </label>
-                <input
-                  type="password"
-                  value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
-                  className="input-field"
-                  required={!editando}
-                  disabled={salvando}
-                  placeholder="••••••••"
-                  minLength={6}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Mínimo de 6 caracteres
-                </p>
-              </div>
-
-              <div>
-                <label className="label">Nível Hierárquico *</label>
-                <select
-                  value={nivelHierarquicoId}
-                  onChange={(e) => setNivelHierarquicoId(e.target.value)}
-                  className="input-field"
-                  required
-                  disabled={salvando}
-                >
-                  <option value="">Selecione...</option>
-                  {niveisHierarquicos.map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {n.label} (Acesso: {n.nivel_acesso})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="label">Tipo de Empresa *</label>
-                <select
-                  value={tipoEmpresa}
-                  onChange={(e) => setTipoEmpresa(e.target.value as any)}
-                  className="input-field"
-                  required
-                  disabled={salvando}
-                >
-                  <option value="CLIENTE">Cliente</option>
-                  <option value="TUNAP">TUNAP</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="ativo"
-                  checked={ativo}
-                  onChange={(e) => setAtivo(e.target.checked)}
-                  className="w-4 h-4 text-primary-600 rounded"
-                  disabled={salvando}
-                />
-                <label htmlFor="ativo" className="text-sm text-gray-700">
-                  Ativo
-                </label>
-              </div>
-
-              {erro && (
-                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{erro}</span>
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="btn-secondary flex-1"
-                  disabled={salvando}
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit" 
-                  className="btn-primary flex-1"
-                  disabled={salvando}
-                >
-                  {salvando ? 'Salvando...' : editando ? 'Atualizar' : 'Criar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Modal Reset Senha */}
       {showResetModal && usuarioReset && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">
-                Resetar Senha
-              </h2>
-              <button
-                onClick={() => setShowResetModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-                disabled={salvando}
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-900">
-                <strong>Usuário:</strong> {usuarioReset.nome_completo}
-                <br />
-                <strong>Email:</strong> {usuarioReset.email}
-              </p>
-            </div>
-
-            <form onSubmit={handleSubmitReset} className="space-y-4">
-              <div>
-                <label className="label">Nova Senha *</label>
-                <input
-                  type="password"
-                  value={novaSenha}
-                  onChange={(e) => setNovaSenha(e.target.value)}
-                  className="input-field"
-                  required
-                  disabled={salvando}
-                  placeholder="••••••••"
-                  minLength={6}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Mínimo de 6 caracteres
-                </p>
-              </div>
-
-              <div>
-                <label className="label">Confirmar Senha *</label>
-                <input
-                  type="password"
-                  value={confirmaSenha}
-                  onChange={(e) => setConfirmaSenha(e.target.value)}
-                  className="input-field"
-                  required
-                  disabled={salvando}
-                  placeholder="••••••••"
-                  minLength={6}
-                />
-              </div>
-
-              {erro && (
-                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{erro}</span>
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowResetModal(false)}
-                  className="btn-secondary flex-1"
-                  disabled={salvando}
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit" 
-                  className="btn-primary flex-1 flex items-center justify-center gap-2"
-                  disabled={salvando}
-                >
-                  <Key className="w-4 h-4" />
-                  {salvando ? 'Resetando...' : 'Resetar Senha'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <ResetSenhaModal
+          usuario={usuarioReset}
+          onClose={() => setShowResetModal(false)}
+          onSuccess={() => {
+            setSucesso('Senha resetada com sucesso!')
+            setShowResetModal(false)
+            setTimeout(() => setSucesso(''), 3000)
+          }}
+        />
       )}
     </>
   )
