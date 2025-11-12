@@ -117,8 +117,10 @@ export default function UsuariosPage() {
           <button onClick={handleNovoUsuario}>Novo Usuário</button>
           {/* Sua lista de usuários */}
         </div>
-      )}
-    </div>
+       )}
+      </div>
+    )  // 
+  }
 
   const handleDelete = async (row: any) => {
     if (!confirm(`Deseja realmente desativar "${row.nome_completo}"?`)) return
