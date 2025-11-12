@@ -1,480 +1,482 @@
-// components/admin/FormularioUsuario.tsx
-'use client';
+'use client'
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useCargos, useTiposEquipe, useCamposFormulario } from '@/hooks/usePermissoes';
-import type { UsuarioFormData } from '@/types/permissoes';
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import { X, AlertCircle, CheckCircle, User, Briefcase, Tag, FileText } from 'lucide-react'
 
-type Props = {
-  usuarioId?: string; // Se fornecido, é edição
-  onSuccess: () => void;
-  onCancel: () => void;
-};
+interface FormularioUsuarioProps {
+  usuarioId?: string
+  onSuccess: () => void
+  onCancel: () => void
+}
 
-export default function FormularioUsuario({ usuarioId, onSuccess, onCancel }: Props) {
-  const { cargos, loading: loadingCargos } = useCargos();
-  const { tiposEquipe, loading: loadingTipos } = useTiposEquipe();
-  
-  const [formData, setFormData] = useState<UsuarioFormData>({
-    nome: '',
-    email: '',
-    senha: '',
-    cargo_id: '',
-    ativo: true,
-    equipes_ids: [],
-    tipos_equipe_ids: [],
-    unidades_ids: [],
-    grupos_ids: [],
-    conglomerados_ids: [],
-  });
+interface Cargo {
+  id: string
+  nome: string
+  categoria: string
+  cor: string
+  escopo: string
+  nivel_acesso: number
+}
 
-  const [equipes, setEquipes] = useState<any[]>([]);
-  const [unidades, setUnidades] = useState<any[]>([]);
-  const [grupos, setGrupos] = useState<any[]>([]);
-  const [conglomerados, setConglomerados] = useState<any[]>([]);
-  
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export default function FormularioUsuario({ usuarioId, onSuccess, onCancel }: FormularioUsuarioProps) {
+  const [loading, setLoading] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState('')
+  const [sucesso, setSucesso] = useState('')
 
-  const campos = useCamposFormulario(formData.cargo_id);
+  // Dados do formulário
+  const [nomeCompleto, setNomeCompleto] = useState('')
+  const [email, setEmail] = useState('')
+  const [senha, setSenha] = useState('')
+  const [cargoId, setCargoId] = useState('')
+  const [cargoLabel, setCargoLabel] = useState('')
+  const [cargoDescricao, setCargoDescricao] = useState('')
+  const [tipoEmpresa, setTipoEmpresa] = useState<'CLIENTE' | 'TUNAP'>('CLIENTE')
+  const [ativo, setAtivo] = useState(true)
 
-  // Buscar dados existentes se for edição
+  // Listas
+  const [cargos, setCargos] = useState<Cargo[]>([])
+
+  // Sugestões de labels por categoria
+  const labelsSugeridos: Record<string, string[]> = {
+    'OPERACIONAL': [
+      'Consultor',
+      'Mecânico',
+      'Vendedor',
+      'Balcão',
+      'Agendador',
+      'Recepcionista',
+      'Auxiliar',
+      'Técnico',
+    ],
+    'GESTAO': [
+      'Coordenador',
+      'Líder de Equipe',
+      'Supervisor de Vendas',
+      'Supervisor Técnico',
+      'Supervisor Operacional',
+    ],
+    'DIRETORIA': [
+      'Diretor Comercial',
+      'Diretor Operacional',
+      'Diretor Regional',
+      'Diretor Geral',
+    ],
+    'EXECUTIVO': [
+      'CEO',
+      'CFO',
+      'COO',
+      'Presidente',
+      'Vice-Presidente',
+    ],
+  }
+
   useEffect(() => {
-    if (!usuarioId) return;
+    loadData()
+  }, [usuarioId])
 
-    const fetchUsuario = async () => {
-      try {
-        const { data, error } = await supabase
-          .rpc('get_usuario_completo', { p_usuario_id: usuarioId });
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      // Carregar cargos
+      const { data: cargosData, error: cargosError } = await supabase
+        .from('cargos')
+        .select('*')
+        .order('nivel_acesso')
 
-        if (error) throw error;
+      if (cargosError) throw cargosError
+      setCargos(cargosData || [])
 
-        setFormData({
-          nome: data.usuario.nome,
-          email: data.usuario.email,
-          cargo_id: data.usuario.cargo_id || '',
-          ativo: data.usuario.ativo,
-          equipes_ids: data.equipes_diretas?.map((e: any) => e.id) || [],
-          tipos_equipe_ids: data.tipos_equipe?.map((t: any) => t.id) || [],
-          unidades_ids: data.unidades?.map((u: any) => u.id) || [],
-          grupos_ids: data.grupos?.map((g: any) => g.id) || [],
-          conglomerados_ids: data.conglomerados?.map((c: any) => c.id) || [],
-        });
-      } catch (err: any) {
-        console.error('Erro ao buscar usuário:', err);
-        setError(err.message);
+      // Se está editando, carregar dados do usuário
+      if (usuarioId) {
+        const { data: usuarioData, error: usuarioError } = await supabase
+          .from('usuarios')
+          .select('*')
+          .eq('id', usuarioId)
+          .single()
+
+        if (usuarioError) throw usuarioError
+
+        setNomeCompleto(usuarioData.nome_completo)
+        setEmail(usuarioData.email)
+        setCargoId(usuarioData.cargo_id)
+        setCargoLabel(usuarioData.cargo_label || '')
+        setCargoDescricao(usuarioData.cargo_descricao || '')
+        setTipoEmpresa(usuarioData.tipo_empresa)
+        setAtivo(usuarioData.ativo)
       }
-    };
-
-    fetchUsuario();
-  }, [usuarioId]);
-
-  // Buscar equipes disponíveis
-  useEffect(() => {
-    const fetchEquipes = async () => {
-      const { data } = await supabase
-        .from('equipes')
-        .select(`
-          id,
-          nome,
-          unidade_id,
-          unidades (nome)
-        `)
-        .eq('ativo', true)
-        .order('nome');
-      
-      setEquipes(data || []);
-    };
-
-    fetchEquipes();
-  }, []);
-
-  // Buscar unidades disponíveis
-  useEffect(() => {
-    const fetchUnidades = async () => {
-      const { data } = await supabase
-        .from('unidades')
-        .select('id, nome')
-        .eq('ativo', true)
-        .order('nome');
-      
-      setUnidades(data || []);
-    };
-
-    fetchUnidades();
-  }, []);
-
-  // Buscar grupos disponíveis
-  useEffect(() => {
-    const fetchGrupos = async () => {
-      const { data } = await supabase
-        .from('grupos')
-        .select('id, nome')
-        .eq('ativo', true)
-        .order('nome');
-      
-      setGrupos(data || []);
-    };
-
-    fetchGrupos();
-  }, []);
-
-  // Buscar conglomerados disponíveis
-  useEffect(() => {
-    const fetchConglomerados = async () => {
-      const { data } = await supabase
-        .from('conglomerados')
-        .select('id, nome')
-        .eq('ativo', true)
-        .order('nome');
-      
-      setConglomerados(data || []);
-    };
-
-    fetchConglomerados();
-  }, []);
+    } catch (error: any) {
+      console.error('Erro ao carregar dados:', error)
+      setErro(error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+    e.preventDefault()
+    setErro('')
+    setSucesso('')
+    setSalvando(true)
 
     try {
-      // 1. Criar/Atualizar usuário
-      let usuarioIdFinal = usuarioId;
-
       if (usuarioId) {
-        // Edição
+        // ========================================
+        // ATUALIZAR USUÁRIO EXISTENTE
+        // ========================================
         const { error: updateError } = await supabase
           .from('usuarios')
           .update({
-            nome: formData.nome,
-            email: formData.email,
-            cargo_id: formData.cargo_id,
-            ativo: formData.ativo,
+            nome_completo: nomeCompleto,
+            cargo_id: cargoId,
+            cargo_label: cargoLabel || null,
+            cargo_descricao: cargoDescricao || null,
+            tipo_empresa: tipoEmpresa,
+            ativo,
           })
-          .eq('id', usuarioId);
+          .eq('id', usuarioId)
 
-        if (updateError) throw updateError;
+        if (updateError) throw updateError
+
+        // Se mudou senha
+        if (senha) {
+          const response = await fetch('/api/admin/update-user-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: usuarioId,
+              password: senha,
+            }),
+          })
+
+          if (!response.ok) {
+            const data = await response.json()
+            throw new Error(data.error || 'Erro ao atualizar senha')
+          }
+        }
+
+        setSucesso('Usuário atualizado com sucesso!')
       } else {
-        // Criação
-        const { data: novoUsuario, error: insertError } = await supabase
-          .from('usuarios')
-          .insert({
-            nome: formData.nome,
-            email: formData.email,
-            cargo_id: formData.cargo_id,
-            ativo: formData.ativo,
-          })
-          .select()
-          .single();
+        // ========================================
+        // CRIAR NOVO USUÁRIO
+        // ========================================
+        const response = await fetch('/api/admin/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            password: senha,
+            nome_completo: nomeCompleto,
+            cargo_id: cargoId,
+            cargo_label: cargoLabel || null,
+            cargo_descricao: cargoDescricao || null,
+            tipo_empresa: tipoEmpresa,
+            ativo,
+          }),
+        })
 
-        if (insertError) throw insertError;
-        usuarioIdFinal = novoUsuario.id;
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || 'Erro ao criar usuário')
+        }
+
+        setSucesso('Usuário criado com sucesso!')
       }
 
-      // 2. Limpar vínculos antigos
-      await supabase.from('usuario_equipes').delete().eq('usuario_id', usuarioIdFinal);
-      await supabase.from('usuario_tipos_equipe').delete().eq('usuario_id', usuarioIdFinal);
-      await supabase.from('usuario_escopos').delete().eq('usuario_id', usuarioIdFinal);
-
-      // 3. Criar novos vínculos baseado no cargo
-      if (campos.mostrarEquipes && formData.equipes_ids && formData.equipes_ids.length > 0) {
-        // Operador/Supervisor: vincular equipes diretas
-        const equipesVinculos = formData.equipes_ids.map(equipe_id => ({
-          usuario_id: usuarioIdFinal,
-          equipe_id,
-        }));
-
-        const { error: equipesError } = await supabase
-          .from('usuario_equipes')
-          .insert(equipesVinculos);
-
-        if (equipesError) throw equipesError;
-      }
-
-      if (campos.mostrarTiposEquipe && formData.tipos_equipe_ids && formData.tipos_equipe_ids.length > 0) {
-        // Gerente+: vincular tipos de equipe
-        const tiposVinculos = formData.tipos_equipe_ids.map(tipo_equipe_id => ({
-          usuario_id: usuarioIdFinal,
-          tipo_equipe_id,
-        }));
-
-        const { error: tiposError } = await supabase
-          .from('usuario_tipos_equipe')
-          .insert(tiposVinculos);
-
-        if (tiposError) throw tiposError;
-      }
-
-      if (campos.mostrarUnidades && formData.unidades_ids && formData.unidades_ids.length > 0) {
-        // Gerente: vincular unidades
-        const unidadesVinculos = formData.unidades_ids.map(unidade_id => ({
-          usuario_id: usuarioIdFinal,
-          unidade_id,
-        }));
-
-        const { error: unidadesError } = await supabase
-          .from('usuario_escopos')
-          .insert(unidadesVinculos);
-
-        if (unidadesError) throw unidadesError;
-      }
-
-      if (campos.mostrarGrupos && formData.grupos_ids && formData.grupos_ids.length > 0) {
-        // Diretor: vincular grupos
-        const gruposVinculos = formData.grupos_ids.map(grupo_id => ({
-          usuario_id: usuarioIdFinal,
-          grupo_id,
-        }));
-
-        const { error: gruposError } = await supabase
-          .from('usuario_escopos')
-          .insert(gruposVinculos);
-
-        if (gruposError) throw gruposError;
-      }
-
-      if (campos.mostrarConglomerados && formData.conglomerados_ids && formData.conglomerados_ids.length > 0) {
-        // Presidente: vincular conglomerados
-        const conglomeradosVinculos = formData.conglomerados_ids.map(conglomerado_id => ({
-          usuario_id: usuarioIdFinal,
-          conglomerado_id,
-        }));
-
-        const { error: conglomeradosError } = await supabase
-          .from('usuario_escopos')
-          .insert(conglomeradosVinculos);
-
-        if (conglomeradosError) throw conglomeradosError;
-      }
-
-      onSuccess();
-    } catch (err: any) {
-      console.error('Erro ao salvar usuário:', err);
-      setError(err.message);
+      // Aguardar 1 segundo e voltar
+      setTimeout(() => {
+        onSuccess()
+      }, 1000)
+    } catch (error: any) {
+      console.error('Erro:', error)
+      setErro(error.message)
     } finally {
-      setLoading(false);
+      setSalvando(false)
     }
-  };
+  }
 
-  const handleMultiSelectChange = (field: keyof UsuarioFormData, value: string) => {
-    const currentValues = (formData[field] as string[]) || [];
-    const newValues = currentValues.includes(value)
-      ? currentValues.filter(v => v !== value)
-      : [...currentValues, value];
-    
-    setFormData(prev => ({ ...prev, [field]: newValues }));
-  };
+  const cargoSelecionado = cargos.find((c) => c.id === cargoId)
+  const sugestoes = cargoSelecionado
+    ? labelsSugeridos[cargoSelecionado.categoria] || []
+    : []
 
-  if (loadingCargos || loadingTipos) {
-    return <div className="p-4">Carregando...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full" />
+      </div>
+    )
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 p-6 bg-white rounded-lg shadow">
-      <h2 className="text-2xl font-bold">
-        {usuarioId ? 'Editar Usuário' : 'Novo Usuário'}
-      </h2>
+    <div className="max-w-3xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {usuarioId ? 'Editar' : 'Novo'} Usuário
+          </h1>
+          <p className="text-gray-600 text-sm mt-1">
+            {usuarioId
+              ? 'Atualize os dados do usuário'
+              : 'Preencha os dados para criar um novo usuário'}
+          </p>
+        </div>
+        <button
+          onClick={onCancel}
+          className="text-gray-400 hover:text-gray-600"
+          disabled={salvando}
+        >
+          <X className="w-6 h-6" />
+        </button>
+      </div>
 
-      {error && (
-        <div className="p-4 bg-red-50 text-red-600 rounded">
-          {error}
+      {/* Mensagens */}
+      {erro && (
+        <div className="mb-6 flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <span>{erro}</span>
         </div>
       )}
 
-      {/* Dados Básicos */}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-1">Nome *</label>
-          <input
-            type="text"
-            required
-            value={formData.nome}
-            onChange={e => setFormData(prev => ({ ...prev, nome: e.target.value }))}
-            className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+      {sucesso && (
+        <div className="mb-6 flex items-center gap-2 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
+          <CheckCircle className="w-5 h-5 flex-shrink-0" />
+          <span>{sucesso}</span>
         </div>
+      )}
 
-        <div>
-          <label className="block text-sm font-medium mb-1">Email *</label>
-          <input
-            type="email"
-            required
-            value={formData.email}
-            onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
-            className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        {!usuarioId && (
-          <div>
-            <label className="block text-sm font-medium mb-1">Senha *</label>
-            <input
-              type="password"
-              required
-              value={formData.senha}
-              onChange={e => setFormData(prev => ({ ...prev, senha: e.target.value }))}
-              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+      {/* Formulário */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Card: Informações Básicas */}
+        <div className="card">
+          <div className="flex items-center gap-2 mb-4">
+            <User className="w-5 h-5 text-primary-600" />
+            <h2 className="text-lg font-semibold text-gray-900">
+              Informações Básicas
+            </h2>
           </div>
-        )}
 
-        <div>
-          <label className="block text-sm font-medium mb-1">Cargo *</label>
-          <select
-            required
-            value={formData.cargo_id}
-            onChange={e => setFormData(prev => ({ 
-              ...prev, 
-              cargo_id: e.target.value,
-              // Limpar campos ao trocar cargo
-              equipes_ids: [],
-              tipos_equipe_ids: [],
-              unidades_ids: [],
-              grupos_ids: [],
-              conglomerados_ids: [],
-            }))}
-            className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Selecione um cargo</option>
-            {cargos.map(cargo => (
-              <option key={cargo.id} value={cargo.id}>
-                {cargo.nome} ({cargo.escopo})
-              </option>
-            ))}
-          </select>
+          <div className="space-y-4">
+            <div>
+              <label className="label">Nome Completo *</label>
+              <input
+                type="text"
+                value={nomeCompleto}
+                onChange={(e) => setNomeCompleto(e.target.value)}
+                className="input-field"
+                required
+                disabled={salvando}
+                placeholder="João da Silva"
+              />
+            </div>
+
+            <div>
+              <label className="label">Email *</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input-field"
+                required
+                disabled={!!usuarioId || salvando}
+                placeholder="joao@empresa.com"
+              />
+              {usuarioId && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Email não pode ser alterado
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="label">
+                Senha {usuarioId ? '(deixe em branco para manter)' : '*'}
+              </label>
+              <input
+                type="password"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                className="input-field"
+                required={!usuarioId}
+                disabled={salvando}
+                placeholder="••••••••"
+                minLength={6}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Mínimo de 6 caracteres
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="ativo"
-            checked={formData.ativo}
-            onChange={e => setFormData(prev => ({ ...prev, ativo: e.target.checked }))}
-            className="rounded"
-          />
-          <label htmlFor="ativo" className="text-sm font-medium">Ativo</label>
-        </div>
-      </div>
+        {/* Card: Cargo e Função */}
+        <div className="card">
+          <div className="flex items-center gap-2 mb-4">
+            <Briefcase className="w-5 h-5 text-primary-600" />
+            <h2 className="text-lg font-semibold text-gray-900">
+              Cargo e Função
+            </h2>
+          </div>
 
-      {/* Campos Dinâmicos baseados no Cargo */}
-      {campos.mostrarEquipes && (
-        <div>
-          <label className="block text-sm font-medium mb-2">Equipes *</label>
-          <div className="border rounded p-3 max-h-60 overflow-y-auto space-y-2">
-            {equipes.map(equipe => (
-              <label key={equipe.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={formData.equipes_ids?.includes(equipe.id) || false}
-                  onChange={() => handleMultiSelectChange('equipes_ids', equipe.id)}
-                  className="rounded"
-                />
-                <span className="text-sm">
-                  {equipe.nome} - {equipe.unidades?.nome}
+          <div className="space-y-4">
+            {/* Cargo Base */}
+            <div>
+              <label className="label">
+                Cargo Base *
+                <span className="text-xs text-gray-500 ml-2 font-normal">
+                  (Define permissões no sistema)
                 </span>
               </label>
-            ))}
-          </div>
-        </div>
-      )}
+              <select
+                value={cargoId}
+                onChange={(e) => setCargoId(e.target.value)}
+                className="input-field"
+                required
+                disabled={salvando}
+              >
+                <option value="">Selecione...</option>
+                {cargos.map((cargo) => (
+                  <option key={cargo.id} value={cargo.id}>
+                    {cargo.nome} - {cargo.categoria} (Acesso: {cargo.nivel_acesso})
+                  </option>
+                ))}
+              </select>
+            </div>
 
-      {campos.mostrarTiposEquipe && (
-        <div>
-          <label className="block text-sm font-medium mb-2">Tipos de Equipe *</label>
-          <div className="border rounded p-3 space-y-2">
-            {tiposEquipe.map(tipo => (
-              <label key={tipo.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+            {/* Label Customizado */}
+            {cargoId && (
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <label className="label flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-blue-600" />
+                  Função Específica (Label Customizado)
+                  <span className="text-xs text-gray-500 font-normal">
+                    - Opcional
+                  </span>
+                </label>
+
                 <input
-                  type="checkbox"
-                  checked={formData.tipos_equipe_ids?.includes(tipo.id) || false}
-                  onChange={() => handleMultiSelectChange('tipos_equipe_ids', tipo.id)}
-                  className="rounded"
+                  type="text"
+                  value={cargoLabel}
+                  onChange={(e) => setCargoLabel(e.target.value)}
+                  className="input-field mb-3"
+                  placeholder={cargoSelecionado?.nome || 'Ex: Consultor, Mecânico, Vendedor...'}
+                  disabled={salvando}
                 />
-                <span className="text-sm">{tipo.nome}</span>
+
+                {/* Sugestões */}
+                {sugestoes.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-600 mb-2">💡 Sugestões:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {sugestoes.map((sugestao) => (
+                        <button
+                          key={sugestao}
+                          type="button"
+                          onClick={() => setCargoLabel(sugestao)}
+                          className="px-3 py-1 text-xs bg-white border border-blue-300 rounded hover:bg-blue-100 transition-colors"
+                          disabled={salvando}
+                        >
+                          {sugestao}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Preview */}
+                <div className="mt-3 p-3 bg-white rounded border border-blue-200">
+                  <p className="text-xs text-gray-500 mb-1">📋 Preview:</p>
+                  <p className="font-semibold text-gray-900">
+                    {cargoLabel || cargoSelecionado?.nome || '...'}
+                  </p>
+                  {cargoLabel && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Cargo base: {cargoSelecionado?.nome}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Descrição */}
+            <div>
+              <label className="label flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Descrição (Opcional)
               </label>
-            ))}
+              <textarea
+                value={cargoDescricao}
+                onChange={(e) => setCargoDescricao(e.target.value)}
+                className="input-field"
+                rows={3}
+                placeholder="Ex: Especialista em produtos de linha premium"
+                disabled={salvando}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Informações adicionais sobre a função deste usuário
+              </p>
+            </div>
           </div>
         </div>
-      )}
 
-      {campos.mostrarUnidades && (
-        <div>
-          <label className="block text-sm font-medium mb-2">Unidades *</label>
-          <div className="border rounded p-3 max-h-60 overflow-y-auto space-y-2">
-            {unidades.map(unidade => (
-              <label key={unidade.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={formData.unidades_ids?.includes(unidade.id) || false}
-                  onChange={() => handleMultiSelectChange('unidades_ids', unidade.id)}
-                  className="rounded"
-                />
-                <span className="text-sm">{unidade.nome}</span>
+        {/* Card: Configurações */}
+        <div className="card">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Configurações
+          </h2>
+
+          <div className="space-y-4">
+            <div>
+              <label className="label">Tipo de Empresa *</label>
+              <select
+                value={tipoEmpresa}
+                onChange={(e) => setTipoEmpresa(e.target.value as any)}
+                className="input-field"
+                required
+                disabled={salvando}
+              >
+                <option value="CLIENTE">Cliente</option>
+                <option value="TUNAP">TUNAP</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="ativo"
+                checked={ativo}
+                onChange={(e) => setAtivo(e.target.checked)}
+                className="w-4 h-4 text-primary-600 rounded"
+                disabled={salvando}
+              />
+              <label htmlFor="ativo" className="text-sm text-gray-700">
+                Usuário ativo
               </label>
-            ))}
+            </div>
           </div>
         </div>
-      )}
 
-      {campos.mostrarGrupos && (
-        <div>
-          <label className="block text-sm font-medium mb-2">Grupos *</label>
-          <div className="border rounded p-3 max-h-60 overflow-y-auto space-y-2">
-            {grupos.map(grupo => (
-              <label key={grupo.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={formData.grupos_ids?.includes(grupo.id) || false}
-                  onChange={() => handleMultiSelectChange('grupos_ids', grupo.id)}
-                  className="rounded"
-                />
-                <span className="text-sm">{grupo.nome}</span>
-              </label>
-            ))}
-          </div>
+        {/* Botões */}
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="btn-secondary flex-1"
+            disabled={salvando}
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            className="btn-primary flex-1"
+            disabled={salvando}
+          >
+            {salvando ? 'Salvando...' : usuarioId ? 'Atualizar' : 'Criar Usuário'}
+          </button>
         </div>
-      )}
-
-      {campos.mostrarConglomerados && (
-        <div>
-          <label className="block text-sm font-medium mb-2">Conglomerados *</label>
-          <div className="border rounded p-3 max-h-60 overflow-y-auto space-y-2">
-            {conglomerados.map(conglomerado => (
-              <label key={conglomerado.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={formData.conglomerados_ids?.includes(conglomerado.id) || false}
-                  onChange={() => handleMultiSelectChange('conglomerados_ids', conglomerado.id)}
-                  className="rounded"
-                />
-                <span className="text-sm">{conglomerado.nome}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Botões */}
-      <div className="flex gap-3 justify-end pt-4 border-t">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-2 border rounded hover:bg-gray-50"
-          disabled={loading}
-        >
-          Cancelar
-        </button>
-        <button
-          type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          disabled={loading}
-        >
-          {loading ? 'Salvando...' : 'Salvar'}
-        </button>
-      </div>
-    </form>
-  );
+      </form>
+    </div>
+  )
 }
