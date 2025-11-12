@@ -8,7 +8,6 @@ import { SearchableSelect } from '@/components/SearchableSelect'
 import { Plus, Trash2, Save, ArrowLeft, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
 import { useEquipesUsuario } from '@/hooks/usePermissoes'
-import { useAuth } from '@/hooks/useAuth'
 
 interface UnidadeFormatada {
   value: string
@@ -29,8 +28,7 @@ interface ItemVenda {
 export default function NovaVendaPage() {
   const router = useRouter()
   const { user } = useUserStore()
-  const { user: authUser } = useAuth()
-  const { equipes, loading: loadingEquipes } = useEquipesUsuario(authUser?.id)
+  const { equipes, loading: loadingEquipes } = useEquipesUsuario(user?.id)
 
   // Estados do formulário
   const [formData, setFormData] = useState({
