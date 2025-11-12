@@ -1,40 +1,33 @@
-import { createClient } from '@supabase/supabase-js'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-
-// Cliente Admin do Supabase (usa Service Role Key)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
 
 export async function POST(request: Request) {
   try {
+    const supabase = createRouteHandlerClient({ cookies })
+    
     const body = await request.json()
-    const { email, password, nome_completo, nivel_hierarquico_id, tipo_empresa, ativo } = body
+    const { 
+      email, 
+      password, 
+      nome_completo, 
+      cargo_id,
+      cargo_label,
+      cargo_descricao,
+      tipo_empresa, 
+      ativo 
+    } = body
 
-    // Validações
-    if (!email || !password || !nome_completo || !nivel_hierarquico_id || !tipo_empresa) {
+    // Validar campos obrigatórios
+    if (!email || !password || !nome_completo || !cargo_id || !tipo_empresa) {
       return NextResponse.json(
         { error: 'Campos obrigatórios faltando' },
         { status: 400 }
       )
     }
 
-    if (password.length < 6) {
-      return NextResponse.json(
-        { error: 'Senha deve ter no mínimo 6 caracteres' },
-        { status: 400 }
-      )
-    }
-
     // 1. Criar usuário no Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
@@ -49,37 +42,39 @@ export async function POST(request: Request) {
     }
 
     // 2. Criar registro na tabela usuarios
-    const { error: userError } = await supabaseAdmin
+    const { error: dbError } = await supabase
       .from('usuarios')
       .insert({
         id: authData.user.id,
         nome_completo,
         email,
-        nivel_hierarquico_id,
+        cargo_id,
+        cargo_label: cargo_label || null,
+        cargo_descricao: cargo_descricao || null,
         tipo_empresa,
-        ativo: ativo !== undefined ? ativo : true,
+        ativo,
       })
 
-    if (userError) {
-      console.error('Erro ao criar registro de usuário:', userError)
+    if (dbError) {
+      console.error('Erro ao criar registro no banco:', dbError)
       
-      // Tentar deletar o usuário do Auth se falhou criar na tabela
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
+      // Tentar deletar usuário do Auth se falhou no DB
+      await supabase.auth.admin.deleteUser(authData.user.id)
       
       return NextResponse.json(
-        { error: userError.message },
+        { error: dbError.message },
         { status: 400 }
       )
     }
 
-    return NextResponse.json(
-      { success: true, user: authData.user },
-      { status: 201 }
-    )
+    return NextResponse.json({ 
+      success: true,
+      user: authData.user 
+    })
   } catch (error: any) {
-    console.error('Erro na criação de usuário:', error)
+    console.error('Erro geral:', error)
     return NextResponse.json(
-      { error: error.message || 'Erro interno do servidor' },
+      { error: error.message || 'Erro ao criar usuário' },
       { status: 500 }
     )
   }
