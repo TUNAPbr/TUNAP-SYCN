@@ -6,6 +6,8 @@ import { supabase, VendaComDetalhes } from '@/lib/supabase'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Calendar, Download, Filter, Search } from 'lucide-react'
+import { useVendasUsuario, useUsuarioCompleto } from '@/hooks/usePermissoes';
+import { useAuth } from '@/hooks/useAuth'; // Seu hook de autenticação existente
 
 export default function RelatoriosPage() {
   const { user } = useUserStore()
@@ -18,6 +20,133 @@ export default function RelatoriosPage() {
   useEffect(() => {
     loadVendas()
   }, [user])
+
+  const { user } = useAuth(); // Pega usuário logado
+  const { vendas, loading, error } = useVendasUsuario(user?.id);
+  const { usuario } = useUsuarioCompleto(user?.id);
+
+  // Calcular métricas baseadas nas vendas permitidas
+  const totalVendas = vendas.length;
+  const valorTotal = vendas.reduce((acc, v) => acc + Number(v.valor_total || 0), 0);
+  const vendasHoje = vendas.filter(v => {
+    const hoje = new Date().toISOString().split('T')[0];
+    return v.data_venda === hoje;
+  }).length;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 text-red-600 p-4 rounded">
+          Erro ao carregar dados: {error}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header com informações do usuário */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h1 className="text-2xl font-bold mb-2">Dashboard</h1>
+        {usuario?.cargo && (
+          <p className="text-gray-600">
+            Olá, {usuario.usuario.nome} ({usuario.cargo.nome})
+          </p>
+        )}
+      </div>
+
+      {/* Cards de Métricas */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-gray-500 text-sm font-medium">Total de Vendas</h3>
+          <p className="text-3xl font-bold mt-2">{totalVendas}</p>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-gray-500 text-sm font-medium">Valor Total</h3>
+          <p className="text-3xl font-bold mt-2">
+            R$ {valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-gray-500 text-sm font-medium">Vendas Hoje</h3>
+          <p className="text-3xl font-bold mt-2">{vendasHoje}</p>
+        </div>
+      </div>
+
+      {/* Tabela de Vendas Recentes */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-6 border-b">
+          <h2 className="text-xl font-bold">Vendas Recentes</h2>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Data
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Número
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Valor
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Observações
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {vendas.slice(0, 10).map((venda) => (
+                <tr key={venda.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    {new Date(venda.data_venda).toLocaleDateString('pt-BR')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    {venda.numero_identificacao}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    R$ {Number(venda.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">
+                    {venda.observacoes || '-'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {vendas.length === 0 && (
+          <div className="p-6 text-center text-gray-500">
+            Nenhuma venda encontrada
+          </div>
+        )}
+      </div>
+
+      {/* Informações de Debug (remover em produção) */}
+      {process.env.NODE_ENV === 'development' && usuario && (
+        <div className="bg-gray-100 rounded-lg p-4 text-xs">
+          <p><strong>Debug Info:</strong></p>
+          <p>Cargo: {usuario.cargo?.nome} ({usuario.cargo?.escopo})</p>
+          <p>Tipos de Equipe: {usuario.tipos_equipe?.map(t => t.nome).join(', ') || 'N/A'}</p>
+          <p>Unidades: {usuario.unidades?.map(u => u.nome).join(', ') || 'N/A'}</p>
+          <p>Grupos: {usuario.grupos?.map(g => g.nome).join(', ') || 'N/A'}</p>
+          <p>Vendas visíveis: {vendas.length}</p>
+        </div>
+      )}
+    </div>
 
   const loadVendas = async () => {
     if (!user) return
