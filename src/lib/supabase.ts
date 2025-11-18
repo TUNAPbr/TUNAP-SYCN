@@ -8,16 +8,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 // Tipos TypeScript atualizados
 export type TipoEmpresa = 'CLIENTE' | 'TUNAP'
 
-export interface Usuario {
-  id: string
-  nome_completo: string
-  email: string
-  tipo_empresa: TipoEmpresa
-  nivel_hierarquico_id: string
-  ativo: boolean
-  created_at: string
-  updated_at: string
-}
 // Adicione:
 export type Cargo = {
   id: string
