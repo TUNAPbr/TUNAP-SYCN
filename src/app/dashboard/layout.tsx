@@ -15,7 +15,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
-  const { user, nivelHierarquico, logout } = useUserStore()
+  const { user, cargo, logout } = useUserStore()  // ← MUDOU: era nivelHierarquico
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const handleLogout = async () => {
@@ -24,8 +24,10 @@ export default function DashboardLayout({
     router.push('/')
   }
 
-  // Verifica se o usuário é admin (nivel_acesso >= 80)
-  const isAdmin = nivelHierarquico && nivelHierarquico.nivel_acesso >= 80
+  // ========================================
+  // CORRIGIDO: Verificar nivel_acesso do cargo
+  // ========================================
+  const isAdmin = cargo && cargo.nivel_acesso >= 80
 
   const menuItems = [
     { icon: Home, label: 'Início', href: '/dashboard' },
@@ -75,7 +77,8 @@ export default function DashboardLayout({
                     {user?.nome_completo}
                   </p>
                   <p className="text-xs text-gray-600 truncate">
-                    {nivelHierarquico?.label}
+                    {/* CORRIGIDO: Mostrar cargo_label OU cargo.nome */}
+                    {user?.cargo_label || cargo?.nome}
                   </p>
                 </div>
               </div>
@@ -182,7 +185,8 @@ export default function DashboardLayout({
                     {user?.nome_completo}
                   </p>
                   <p className="text-xs text-gray-600 truncate">
-                    {nivelHierarquico?.label}
+                    {/* CORRIGIDO: Mostrar cargo_label OU cargo.nome */}
+                    {user?.cargo_label || cargo?.nome}
                   </p>
                 </div>
               </div>
