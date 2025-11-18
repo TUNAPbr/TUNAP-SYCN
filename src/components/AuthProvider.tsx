@@ -2,86 +2,66 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { useUserStore } from '@/lib/store'
-import { Loader2 } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AdminAuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const { user, cargo } = useUserStore()  // ← MUDOU: era nivelHierarquico
   const [loading, setLoading] = useState(true)
-  const { setUser, setNivelHierarquico, setEquipes } = useUserStore()
+  const [erro, setErro] = useState('')
 
   useEffect(() => {
-    const checkUser = async () => {
-      try {
-        // Verificar se há sessão ativa
-        const { data: { session } } = await supabase.auth.getSession()
-
-        if (!session) {
-          router.push('/')
-          return
-        }
-
-        // Buscar dados do usuário
-        const { data: userData, error: userError } = await supabase
-          .from('usuarios')
-          .select(`
-            *,
-            niveis_hierarquicos (*)
-          `)
-          .eq('id', session.user.id)
-          .single()
-
-        if (userError || !userData || !userData.ativo) {
-          await supabase.auth.signOut()
-          router.push('/')
-          return
-        }
-
-        setUser(userData)
-        setNivelHierarquico(userData.niveis_hierarquicos)
-
-        // Buscar equipes do usuário
-        const { data: equipesData } = await supabase
-          .from('usuario_equipes')
-          .select('equipes (*)')
-          .eq('usuario_id', session.user.id)
-
-        if (equipesData) {
-          const equipes = equipesData.map((ue: any) => ue.equipes)
-          setEquipes(equipes)
-        }
-
-      } catch (error) {
-        console.error('Erro ao verificar autenticação:', error)
+    const checkAdmin = () => {
+      // Verificar se o usuário está logado
+      if (!user) {
         router.push('/')
-      } finally {
-        setLoading(false)
+        return
       }
+
+      // ========================================
+      // CORRIGIDO: Verificar nivel_acesso do cargo
+      // ========================================
+      // Nivel de acesso >= 80 = Admin
+      if (!cargo || cargo.nivel_acesso < 80) {
+        setErro('Você não tem permissão para acessar o painel administrativo.')
+        setTimeout(() => {
+          router.push('/dashboard')
+        }, 3000)
+        return
+      }
+
+      setLoading(false)
     }
 
-    checkUser()
-
-    // Escutar mudanças de autenticação
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_OUT' || !session) {
-          router.push('/')
-        }
-      }
-    )
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [router, setUser, setNivelHierarquico, setEquipes])
+    checkAdmin()
+  }, [user, cargo, router])
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-primary-600 mx-auto mb-4" />
-          <p className="text-gray-600">Carregando...</p>
+          <p className="text-gray-600">Verificando permissões...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (erro) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="card max-w-md text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            Acesso Negado
+          </h2>
+          <p className="text-gray-600 mb-4">{erro}</p>
+          <p className="text-sm text-gray-500">
+            Redirecionando para o dashboard...
+          </p>
         </div>
       </div>
     )
