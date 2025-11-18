@@ -7,7 +7,7 @@ import { Loader2, AlertCircle } from 'lucide-react'
 
 export function AdminAuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  const { user, nivelHierarquico } = useUserStore()
+  const { user, cargo } = useUserStore()  // ← MUDOU: era nivelHierarquico
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
 
@@ -19,9 +19,11 @@ export function AdminAuthGuard({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // Verificar se o usuário tem nível de acesso admin
+      // ========================================
+      // CORRIGIDO: Verificar nivel_acesso do cargo
+      // ========================================
       // Nivel de acesso >= 80 = Admin
-      if (!nivelHierarquico || nivelHierarquico.nivel_acesso < 80) {
+      if (!cargo || cargo.nivel_acesso < 80) {
         setErro('Você não tem permissão para acessar o painel administrativo.')
         setTimeout(() => {
           router.push('/dashboard')
@@ -33,7 +35,7 @@ export function AdminAuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     checkAdmin()
-  }, [user, nivelHierarquico, router])
+  }, [user, cargo, router])
 
   if (loading) {
     return (
