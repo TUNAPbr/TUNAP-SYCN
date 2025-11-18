@@ -18,14 +18,26 @@ export interface Usuario {
   created_at: string
   updated_at: string
 }
-
-export interface NivelHierarquico {
+// Adicione:
+export type Cargo = {
   id: string
   nome: string
-  tipo_empresa: TipoEmpresa
+  escopo: string
   nivel_acesso: number
-  label: string
-  created_at: string
+  categoria: string
+  cor: string
+}
+
+export type Usuario = {
+  id: string
+  nome_completo: string
+  email: string
+  cargo_id: string
+  cargo_label: string | null
+  cargo_descricao: string | null
+  tipo_empresa: 'CLIENTE' | 'TUNAP'
+  ativo: boolean
+  // ... outros campos
 }
 
 export interface Conglomerado {
