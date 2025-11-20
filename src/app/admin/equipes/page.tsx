@@ -8,6 +8,7 @@ import { X, AlertCircle } from 'lucide-react'
 export default function EquipesPage() {
   const [equipes, setEquipes] = useState<any[]>([])
   const [unidades, setUnidades] = useState<any[]>([])
+  const [tiposEquipe, setTiposEquipe] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editando, setEditando] = useState<any>(null)
@@ -16,6 +17,7 @@ export default function EquipesPage() {
   // Form states
   const [nome, setNome] = useState('')
   const [unidadeId, setUnidadeId] = useState('')
+  const [tipoEquipeId, setTipoEquipeId] = useState('')
   const [ativo, setAtivo] = useState(true)
 
   useEffect(() => {
@@ -24,26 +26,34 @@ export default function EquipesPage() {
 
   const loadData = async () => {
     try {
-      const [equipesRes, unidadesRes] = await Promise.all([
+      const [equipesRes, unidadesRes, tiposEquipeRes] = await Promise.all([
         supabase
           .from('equipes')
           .select(`
             *,
-            unidades (nome, grupos (nome))
+            unidades (nome, grupos (nome)),
+            tipos_equipe (nome)
           `)
           .order('nome'),
         supabase
           .from('unidades')
           .select('*, grupos (nome)')
           .eq('ativo', true)
+          .order('nome'),
+        supabase
+          .from('tipos_equipe')
+          .select('*')
+          .eq('ativo', true)
           .order('nome')
       ])
 
       if (equipesRes.error) throw equipesRes.error
       if (unidadesRes.error) throw unidadesRes.error
+      if (tiposEquipeRes.error) throw tiposEquipeRes.error
 
       setEquipes(equipesRes.data || [])
       setUnidades(unidadesRes.data || [])
+      setTiposEquipe(tiposEquipeRes.data || [])
     } catch (error: any) {
       console.error('Erro:', error)
       setErro(error.message)
@@ -56,6 +66,7 @@ export default function EquipesPage() {
     setEditando(null)
     setNome('')
     setUnidadeId('')
+    setTipoEquipeId('')
     setAtivo(true)
     setErro('')
     setShowModal(true)
@@ -65,6 +76,7 @@ export default function EquipesPage() {
     setEditando(row)
     setNome(row.nome)
     setUnidadeId(row.unidade_id)
+    setTipoEquipeId(row.tipo_equipe_id || '')
     setAtivo(row.ativo)
     setErro('')
     setShowModal(true)
@@ -95,14 +107,24 @@ export default function EquipesPage() {
       if (editando) {
         const { error } = await supabase
           .from('equipes')
-          .update({ nome, unidade_id: unidadeId, ativo })
+          .update({ 
+            nome, 
+            unidade_id: unidadeId,
+            tipo_equipe_id: tipoEquipeId || null,
+            ativo 
+          })
           .eq('id', editando.id)
 
         if (error) throw error
       } else {
         const { error } = await supabase
           .from('equipes')
-          .insert({ nome, unidade_id: unidadeId, ativo })
+          .insert({ 
+            nome, 
+            unidade_id: unidadeId,
+            tipo_equipe_id: tipoEquipeId || null,
+            ativo 
+          })
 
         if (error) throw error
       }
@@ -118,6 +140,11 @@ export default function EquipesPage() {
     {
       key: 'nome',
       label: 'Nome',
+    },
+    {
+      key: 'tipos_equipe',
+      label: 'Tipo',
+      render: (value: any) => value?.nome || '-',
     },
     {
       key: 'unidades',
@@ -208,6 +235,25 @@ export default function EquipesPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="label">Tipo de Equipe</label>
+                <select
+                  value={tipoEquipeId}
+                  onChange={(e) => setTipoEquipeId(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="">Nenhum</option>
+                  {tiposEquipe.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nome}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Ex: Agendamento, Mecânica, Acessórios, etc
+                </p>
               </div>
 
               <div className="flex items-center gap-2">
